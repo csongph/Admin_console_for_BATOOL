@@ -1,14 +1,13 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import time
 import logging
 
 from app.core.config import settings
-from app.routers import auth, logs, system, health
+from app.routers import auth, logs, system, health, mappings, databases, sessions
 from app.middleware.logging_middleware import LoggingMiddleware
+from app.db.database import init_db
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -22,20 +21,23 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
 )
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Custom logging middleware
 app.add_middleware(LoggingMiddleware)
 
 
-# Global exception handler
+@app.on_event("startup")
+async def on_startup():
+    await init_db()
+    logger.info("Database tables initialized")
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
@@ -46,8 +48,10 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Register routers
-app.include_router(health.router, prefix="/api")
-app.include_router(auth.router, prefix="/api/auth")
-app.include_router(logs.router, prefix="/api")
-app.include_router(system.router, prefix="/api/system")
+app.include_router(health.router,    prefix="/api")
+app.include_router(auth.router,      prefix="/api/auth")
+app.include_router(logs.router,      prefix="/api")
+app.include_router(system.router,    prefix="/api/system")
+app.include_router(mappings.router,  prefix="/api")
+app.include_router(databases.router, prefix="/api")
+app.include_router(sessions.router,  prefix="/api")

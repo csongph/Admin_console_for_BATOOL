@@ -9,7 +9,7 @@ router = APIRouter(tags=["Logs"])
 
 @router.get("/logs", response_model=APIResponse)
 async def get_logs(current_user: dict = Depends(get_current_user)):
-    logs = log_service.get_all_logs()
+    logs = await log_service.get_all_logs()
     return APIResponse(
         success=True,
         message="Logs retrieved successfully",

@@ -14,7 +14,7 @@
 const API_URL = 'http://localhost:8000';
 
 async function apiCall(path, options = {}) {
-  const token = localStorage.getItem('ba_token');
+  const token = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
   const res = await fetch(API_URL + path, {
     headers: {
       'Content-Type': 'application/json',
@@ -27,6 +27,9 @@ async function apiCall(path, options = {}) {
     // token หมดอายุ → logout อัตโนมัติ
     if (res.status === 401) {
       localStorage.removeItem('ba_token');
+      localStorage.removeItem('ba_session');
+      sessionStorage.removeItem('ba_token');
+      sessionStorage.removeItem('ba_session');
       if (typeof doLogout === 'function') doLogout();
     }
     throw new Error(data.detail || data.message || `HTTP ${res.status}`);
@@ -224,32 +227,151 @@ document.addEventListener('keydown', e => {
 //  DASHBOARD
 // ════════════════════════════════════════════════════════════
 
+const BA_TOOL_URL = 'https://ba-tool-backend.onrender.com';
+
+async function fetchBATool(path) {
+  const res = await fetch(BA_TOOL_URL + path);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function parseLogs(logs) {
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Sessions ที่ created วันนี้
+  const createdToday = logs.filter(l =>
+    l.message.includes('created') && l.message.includes('Session') && l.timestamp.startsWith(today)
+  );
+
+  // Sessions ที่ยังไม่ถูก delete (active)
+  const deletedIds = new Set(
+    logs.filter(l => l.message.includes('deleted'))
+      .map(l => { const m = l.message.match(/Session ([a-f0-9-]+)/); return m?.[1]; })
+      .filter(Boolean)
+  );
+  const activeSessions = logs.filter(l => {
+    const m = l.message.match(/Session ([a-f0-9-]+) created/);
+    return m && !deletedIds.has(m[1]);
+  });
+
+  // Conversions วันนี้ = จำนวน Convert วันนี้
+  const conversionsToday = logs.filter(l =>
+    l.message.includes('Convert') && l.timestamp.startsWith(today)
+  ).length;
+
+  // Warning วันนี้
+  const warningsToday = logs.filter(l =>
+    l.level === 'WARNING' && l.timestamp.startsWith(today)
+  ).length;
+
+  return { createdToday, activeSessions, conversionsToday, warningsToday };
+}
+
 async function refreshDashboard() {
   try {
     const start = Date.now();
-    const [health, systemStatus] = await Promise.all([
+
+    const [health, systemStatus, dbSupport, dbPairs, logs] = await Promise.allSettled([
       apiCall('/api/health'),
       apiCall('/api/system/status'),
+      fetchBATool('/database-support'),
+      fetchBATool('/db-pairs'),
+      fetchBATool('/logs'),
     ]);
+
     const ping = Date.now() - start;
 
-    // อัปเดต status cards
+    // ── Status Cards ──────────────────────────────────────
     const cards = document.querySelectorAll('.status-card');
+    const healthOk = health.status === 'fulfilled' && health.value?.success;
     if (cards[0]) {
-      cards[0].querySelector('.sc-val').textContent = health.success ? 'Online' : 'Error';
+      cards[0].querySelector('.sc-val').textContent = healthOk ? 'Online' : 'Error';
       cards[0].querySelector('.sc-ping').textContent = `${ping} ms`;
-      cards[0].querySelector('.sc-indicator').className =
-        `sc-indicator ${health.success ? 'online' : 'offline'}`;
+      cards[0].querySelector('.sc-indicator').className = `sc-indicator ${healthOk ? 'online' : 'offline'}`;
     }
 
-    // อัปเดต system status บน sidebar
+    // ── Sidebar status ────────────────────────────────────
     const statusDot   = document.querySelector('.status-dot');
     const statusLabel = document.querySelector('.status-label');
-    const isRunning   = systemStatus.data?.status === 'running';
-    if (statusDot)   statusDot.className   = `status-dot ${isRunning ? 'online' : 'offline'}`;
-    if (statusLabel) statusLabel.textContent = isRunning ? 'System Online' : 'System Stopped';
+    const isRunning   = systemStatus.status === 'fulfilled' && systemStatus.value?.data?.status === 'running';
+    if (statusDot)   statusDot.className     = `status-dot ${isRunning ? 'online' : 'offline'}`;
+    if (statusLabel) statusLabel.textContent  = isRunning ? 'System Online' : 'System Stopped';
 
-    showToast(`Dashboard refreshed — system ${systemStatus.data?.status}`, 'success');
+    // ── Parse logs ────────────────────────────────────────
+    const logList = logs.status === 'fulfilled' ? (logs.value || []) : [];
+    const { activeSessions, conversionsToday, warningsToday, createdToday } = parseLogs(logList);
+
+    // ── Metric Cards ──────────────────────────────────────
+    const metrics = document.querySelectorAll('.metric-card');
+
+    // Supported Databases
+    const dbList = dbSupport.status === 'fulfilled'
+      ? (dbSupport.value?.database_support_matrix || []) : [];
+    if (metrics[0]) {
+      metrics[0].querySelector('.metric-val').textContent = dbList.length || '-';
+      metrics[0].querySelector('.metric-sub').textContent = dbList.map(d => d.database).join(', ') || '-';
+    }
+
+    // Total Mapping Pairs
+    const pairs = dbPairs.status === 'fulfilled' ? (dbPairs.value?.pairs || []) : [];
+    if (metrics[1]) {
+      metrics[1].querySelector('.metric-val').textContent = pairs.length || '-';
+      metrics[1].querySelector('.metric-sub').textContent = `${pairs.length} conversion pairs`;
+    }
+
+    // Active Sessions
+    if (metrics[2]) {
+      metrics[2].querySelector('.metric-val').textContent = activeSessions.length;
+      metrics[2].querySelector('.metric-sub').textContent = `${createdToday.length} created today`;
+    }
+
+    // Conversions Today
+    if (metrics[3]) {
+      metrics[3].querySelector('.metric-val').textContent = conversionsToday;
+      metrics[3].querySelector('.metric-sub').textContent = warningsToday ? `⚠ ${warningsToday} warning(s) today` : 'No warnings today';
+    }
+
+    // ── Database Coverage ─────────────────────────────────
+    const coverageList = document.getElementById('dbCoverageList');
+    if (coverageList && dbList.length && pairs.length) {
+      const total = dbList.length - 1 || 1;
+      const pairCount = {};
+      pairs.forEach(p => {
+        const key = p.source_db.toLowerCase();
+        pairCount[key] = (pairCount[key] || 0) + 1;
+      });
+      coverageList.innerHTML = dbList.map(db => {
+        const key = db.database.toLowerCase().replace(' ', '').replace('sql server', 'sqlserver');
+        const count = pairCount[key] || pairCount[db.database.toLowerCase()] || 0;
+        const pct = Math.round((count / total) * 100);
+        return `
+          <div class="db-cov-item">
+            <span class="db-cov-name">${db.database}</span>
+            <div class="db-cov-bar"><div class="db-cov-fill" style="width:${pct}%"></div></div>
+            <span class="db-cov-pct">${pct}%</span>
+          </div>`;
+      }).join('');
+    }
+
+    // ── Activity Feed ─────────────────────────────────────
+    const activityFeed = document.getElementById('activityFeed');
+    if (activityFeed && logList.length) {
+      const recent = [...logList].reverse().slice(0, 8);
+      activityFeed.innerHTML = recent.map(l => {
+        const level = (l.level || 'INFO').toUpperCase();
+        const dotClass = level === 'WARNING' ? 'warn' : level === 'ERROR' ? 'error' : 'success';
+        return `
+          <div class="activity-item">
+            <div class="activity-dot ${dotClass}"></div>
+            <div class="activity-body">
+              <div class="activity-msg">${l.message}</div>
+              <div class="activity-time">${l.timestamp}</div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    showToast('Dashboard refreshed', 'success');
   } catch (e) {
     showToast('Refresh failed: ' + e.message, 'error');
   }
@@ -259,11 +381,40 @@ async function refreshDashboard() {
 //  MAPPING MANAGER
 // ════════════════════════════════════════════════════════════
 
-const mappingData = []; // Mockup cleared. Waiting for API data.
+let mappingData = []; // populated from API
 
 let mappingCurrentPage = 1;
 const MAPPING_PAGE_SIZE = 8;
 let selectedMappings = new Set();
+
+// แปลง snake_case จาก API → camelCase ที่ UI ใช้
+function normMapping(m) {
+  return {
+    id:          m.id,
+    srcDb:       m.src_db,
+    rawType:     m.raw_type,
+    sourceType:  m.source_type  || '',
+    logicalType: m.logical_type,
+    masterType:  m.master_type,
+    destDb:      m.dest_db,
+    finalType:   m.final_type,
+    confidence:  m.confidence ?? 100,
+    status:      m.status,
+    updated:     m.updated,
+  };
+}
+
+async function fetchMappings() {
+  try {
+    const data = await apiCall('/api/mappings');
+    mappingData = (data.data || []).map(normMapping);
+    const badge = document.querySelector('.nav-item[data-page="mapping"] .nav-badge');
+    if (badge) badge.textContent = mappingData.length;
+    renderMappingTable();
+  } catch (e) {
+    showToast('Failed to load mappings: ' + e.message, 'error');
+  }
+}
 
 function getFilteredMappings() {
   const search = (document.getElementById('mappingSearch')?.value || '').toLowerCase();
@@ -272,7 +423,7 @@ function getFilteredMappings() {
   const status = document.getElementById('filterStatus')?.value || '';
 
   return mappingData.filter(m =>
-    (!search || [m.srcDb, m.rawType, m.logicalType, m.masterType, m.finalType].some(v => v.toLowerCase().includes(search))) &&
+    (!search || [m.srcDb, m.rawType, m.logicalType, m.masterType, m.finalType].some(v => (v||'').toLowerCase().includes(search))) &&
     (!srcDb  || m.srcDb  === srcDb)  &&
     (!destDb || m.destDb === destDb) &&
     (!status || m.status === status)
@@ -291,7 +442,7 @@ function renderMappingTable() {
   if (!tbody) return;
 
   if (!page.length) {
-    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text3)">No mapping rules found</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text3)">No mapping rules found</td></tr>`;
   } else {
     tbody.innerHTML = page.map(m => `
       <tr>
@@ -301,6 +452,7 @@ function renderMappingTable() {
         </td>
         <td class="td-name">${m.srcDb}</td>
         <td>${m.rawType}</td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${m.sourceType}</td>
         <td>${m.logicalType}</td>
         <td>${m.masterType}</td>
         <td>${m.destDb}</td>
@@ -381,29 +533,33 @@ function updateBulkBar() {
 function editMapping(id) {
   const m = mappingData.find(r => r.id === id);
   if (!m) return;
-  document.getElementById('mSrcDb').value      = m.srcDb;
-  document.getElementById('mDestDb').value     = m.destDb;
-  document.getElementById('mRawType').value    = m.rawType;
-  document.getElementById('mLogicalType').value= m.logicalType;
-  document.getElementById('mMasterType').value = m.masterType;
-  document.getElementById('mFinalType').value  = m.finalType;
-  document.getElementById('mStatus').value     = m.status;
+  document.getElementById('mSrcDb').value       = m.srcDb;
+  document.getElementById('mDestDb').value      = m.destDb;
+  document.getElementById('mRawType').value     = m.rawType;
+  document.getElementById('mLogicalType').value = m.logicalType;
+  document.getElementById('mMasterType').value  = m.masterType;
+  document.getElementById('mFinalType').value   = m.finalType;
+  document.getElementById('mStatus').value      = m.status;
   document.getElementById('mappingModalTitle').textContent = 'Edit Mapping Rule';
+  document.getElementById('mappingModal').dataset.editId = id;
   openModal('mappingModal');
 }
 
 function deleteMapping(id) {
-  const idx = mappingData.findIndex(r => r.id === id);
-  if (idx === -1) return;
+  const m = mappingData.find(r => r.id === id);
+  if (!m) return;
   document.getElementById('deleteWarnText').textContent =
-    `Delete mapping "${mappingData[idx].rawType} → ${mappingData[idx].finalType}"? This cannot be undone.`;
-  document.getElementById('deleteConfirmBtn').onclick = () => {
-    // API Call to delete here
-    mappingData.splice(idx, 1);
-    selectedMappings.delete(id);
-    renderMappingTable();
-    showToast('Mapping rule deleted', 'info');
-    closeModal('deleteModal');
+    `Delete mapping "${m.rawType} → ${m.finalType}"? This cannot be undone.`;
+  document.getElementById('deleteConfirmBtn').onclick = async () => {
+    try {
+      await apiCall(`/api/mappings/${id}`, { method: 'DELETE' });
+      selectedMappings.delete(id);
+      showToast('Mapping rule deleted', 'info');
+      closeModal('deleteModal');
+      await fetchMappings();
+    } catch (e) {
+      showToast('Delete failed: ' + e.message, 'error');
+    }
   };
   openModal('deleteModal');
 }
@@ -412,27 +568,31 @@ function bulkDelete() {
   if (!selectedMappings.size) return;
   document.getElementById('deleteWarnText').textContent =
     `Delete ${selectedMappings.size} selected mapping(s)? This cannot be undone.`;
-  document.getElementById('deleteConfirmBtn').onclick = () => {
-    selectedMappings.forEach(id => {
-      const idx = mappingData.findIndex(r => r.id === id);
-      if (idx !== -1) mappingData.splice(idx, 1);
-    });
-    selectedMappings.clear();
-    renderMappingTable();
-    showToast('Selected mappings deleted', 'info');
-    closeModal('deleteModal');
+  document.getElementById('deleteConfirmBtn').onclick = async () => {
+    try {
+      await Promise.all([...selectedMappings].map(id =>
+        apiCall(`/api/mappings/${id}`, { method: 'DELETE' })
+      ));
+      selectedMappings.clear();
+      showToast('Selected mappings deleted', 'info');
+      closeModal('deleteModal');
+      await fetchMappings();
+    } catch (e) {
+      showToast('Bulk delete failed: ' + e.message, 'error');
+    }
   };
   openModal('deleteModal');
 }
 
 function bulkApprove() {
-  selectedMappings.forEach(id => {
-    const m = mappingData.find(r => r.id === id);
-    if (m) m.status = 'active';
-  });
-  showToast(`${selectedMappings.size} mapping(s) set to active`, 'success');
-  selectedMappings.clear();
-  renderMappingTable();
+  if (!selectedMappings.size) return;
+  Promise.all([...selectedMappings].map(id =>
+    apiCall(`/api/mappings/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'active' }) })
+  )).then(() => {
+    showToast(`${selectedMappings.size} mapping(s) set to active`, 'success');
+    selectedMappings.clear();
+    fetchMappings();
+  }).catch(e => showToast('Approve failed: ' + e.message, 'error'));
 }
 
 function openAddMapping() {
@@ -441,28 +601,39 @@ function openAddMapping() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  delete document.getElementById('mappingModal').dataset.editId;
   openModal('mappingModal');
 }
 
-function saveMapping() {
+async function saveMapping() {
   const raw = document.getElementById('mRawType')?.value.trim();
   if (!raw) { showToast('Raw Type is required', 'error'); return; }
-  const newId = mappingData.length ? Math.max(...mappingData.map(m => m.id)) + 1 : 1;
-  mappingData.unshift({
-    id: newId,
-    srcDb:       document.getElementById('mSrcDb')?.value || 'sqlserver',
-    rawType:     raw,
-    logicalType: document.getElementById('mLogicalType')?.value.trim() || '',
-    masterType:  document.getElementById('mMasterType')?.value.trim() || '',
-    destDb:      document.getElementById('mDestDb')?.value || 'confluent',
-    finalType:   document.getElementById('mFinalType')?.value.trim() || '',
-    confidence:  100,
-    status:      document.getElementById('mStatus')?.value || 'draft',
-    updated:     new Date().toISOString().slice(0, 10),
-  });
-  showToast('Mapping rule saved', 'success');
-  closeModal('mappingModal');
-  renderMappingTable();
+
+  const payload = {
+    src_db:       document.getElementById('mSrcDb')?.value || 'sqlserver',
+    raw_type:     raw,
+    logical_type: document.getElementById('mLogicalType')?.value.trim() || '',
+    master_type:  document.getElementById('mMasterType')?.value.trim() || '',
+    dest_db:      document.getElementById('mDestDb')?.value || 'confluent',
+    final_type:   document.getElementById('mFinalType')?.value.trim() || '',
+    confidence:   100,
+    status:       document.getElementById('mStatus')?.value || 'draft',
+  };
+
+  const editId = document.getElementById('mappingModal').dataset.editId;
+  try {
+    if (editId) {
+      await apiCall(`/api/mappings/${editId}`, { method: 'PUT', body: JSON.stringify(payload) });
+      showToast('Mapping rule updated', 'success');
+    } else {
+      await apiCall('/api/mappings', { method: 'POST', body: JSON.stringify(payload) });
+      showToast('Mapping rule saved', 'success');
+    }
+    closeModal('mappingModal');
+    await fetchMappings();
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'error');
+  }
 }
 
 function openBulkImport() {
@@ -563,52 +734,73 @@ function batchReject() {
   renderAIReview(); updateReviewStats();
 }
 
-function saveApproved() {
+async function saveApproved() {
   const approved = aiSuggestions.filter((_, i) => aiDecisions[i] === 'approved');
   if (!approved.length) { showToast('No approved mappings to save', 'warn'); return; }
-  const newId = mappingData.length ? Math.max(...mappingData.map(m => m.id)) : 0;
-  approved.forEach((s, idx) => {
-    mappingData.unshift({
-      id: newId + idx + 1,
-      srcDb:       document.getElementById('aiSrcDb')?.value || 'sqlserver',
-      rawType:     s.raw,
-      logicalType: s.logical,
-      masterType:  s.logical.toUpperCase(),
-      destDb:      document.getElementById('aiDestDb')?.value || 'confluent',
-      finalType:   s.final,
-      confidence:  s.confidence,
-      status:      'active',
-      updated:     new Date().toISOString().slice(0, 10),
-    });
-  });
-  showToast(`${approved.length} mapping(s) saved successfully`, 'success');
-  closeModal('aiModal');
-  renderMappingTable();
+  const srcDb  = document.getElementById('aiSrcDb')?.value || 'sqlserver';
+  const destDb = document.getElementById('aiDestDb')?.value || 'confluent';
+  try {
+    await Promise.all(approved.map(s => apiCall('/api/mappings', {
+      method: 'POST',
+      body: JSON.stringify({
+        src_db:       srcDb,
+        raw_type:     s.raw,
+        logical_type: s.logical,
+        master_type:  s.logical.toUpperCase(),
+        dest_db:      destDb,
+        final_type:   s.final,
+        confidence:   s.confidence,
+        status:       'active',
+      }),
+    })));
+    showToast(`${approved.length} mapping(s) saved successfully`, 'success');
+    closeModal('aiModal');
+    await fetchMappings();
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'error');
+  }
 }
 
 // ════════════════════════════════════════════════════════════
 //  DATABASE REGISTRY
 // ════════════════════════════════════════════════════════════
 
-const dbData = []; // Mockup cleared
+let dbData = []; // populated from API
+
+const DB_ICONS = {
+  sqlserver: '🗄', postgresql: '🐘', mysql: '🐬',
+  oracle: '🔴', confluent: '⚡', default: '🗄',
+};
+
+async function fetchDatabases() {
+  try {
+    const data = await apiCall('/api/databases');
+    dbData = data.data || [];
+    renderDatabases();
+  } catch (e) {
+    showToast('Failed to load databases: ' + e.message, 'error');
+  }
+}
 
 function renderDatabases() {
   const grid = document.getElementById('dbGrid');
   if (!grid) return;
-  
+
   if (!dbData.length) {
-      grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text3); border: 1px dashed var(--border2); border-radius: var(--radius);">No databases configured</div>`;
-      return;
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);border:1px dashed var(--border2);border-radius:var(--radius);">No databases configured</div>`;
+    return;
   }
 
-  grid.innerHTML = dbData.map(db => `
+  grid.innerHTML = dbData.map(db => {
+    const icon = DB_ICONS[db.key] || DB_ICONS.default;
+    return `
     <div class="db-card">
       <div class="db-card-header">
         <div class="db-card-info">
-          <div class="db-logo">${db.icon || '🗄'}</div>
+          <div class="db-logo">${icon}</div>
           <div>
             <div class="db-card-name">${db.name}</div>
-            <div class="db-card-key">${db.key}</div>
+            <div class="db-card-key">${db.key}${db.version ? ' · ' + db.version : ''}</div>
           </div>
         </div>
         <div class="db-card-toggle">
@@ -634,15 +826,20 @@ function renderDatabases() {
         <button class="btn btn-sm btn-ghost" onclick="editDatabase(${db.id})">Edit</button>
         <button class="btn btn-sm btn-danger" onclick="confirmDeleteDatabase(${db.id})">Delete</button>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
-function toggleDatabase(id, enabled) {
+async function toggleDatabase(id, enabled) {
   const db = dbData.find(d => d.id === id);
-  if (db) {
+  if (!db) return;
+  try {
+    await apiCall(`/api/databases/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) });
     db.enabled = enabled;
     showToast(`${db.name} ${enabled ? 'enabled' : 'disabled'}`, enabled ? 'success' : 'warn');
+  } catch (e) {
+    showToast('Update failed: ' + e.message, 'error');
+    renderDatabases(); // revert toggle UI
   }
 }
 
@@ -651,9 +848,10 @@ function editDatabase(id) {
   if (!db) return;
   document.getElementById('dbName').value    = db.key;
   document.getElementById('dbLabel').value   = db.name;
-  document.getElementById('dbVersion').value = '';
-  document.getElementById('dbStatus').value  = db.enabled ? 'active' : 'beta';
+  document.getElementById('dbVersion').value = db.version || '';
+  document.getElementById('dbStatus').value  = db.status || 'active';
   document.getElementById('dbModalTitle').textContent = 'Edit Database';
+  document.getElementById('dbModal').dataset.editId = id;
   openModal('dbModal');
 }
 
@@ -662,63 +860,87 @@ function confirmDeleteDatabase(id) {
   if (!db) return;
   document.getElementById('deleteWarnText').textContent =
     `Delete "${db.name}" from the registry? All associated mapping rules (${db.rules}) will also be removed.`;
-  document.getElementById('deleteConfirmBtn').onclick = () => {
-    const idx = dbData.findIndex(d => d.id === id);
-    if (idx !== -1) dbData.splice(idx, 1);
-    renderDatabases();
-    showToast(`${db.name} removed`, 'warn');
-    closeModal('deleteModal');
+  document.getElementById('deleteConfirmBtn').onclick = async () => {
+    try {
+      await apiCall(`/api/databases/${id}`, { method: 'DELETE' });
+      showToast(`${db.name} removed`, 'warn');
+      closeModal('deleteModal');
+      await fetchDatabases();
+    } catch (e) {
+      showToast('Delete failed: ' + e.message, 'error');
+    }
   };
   openModal('deleteModal');
 }
 
 function openAddDatabase() {
   ['dbName','dbLabel','dbVersion'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
+    const el = document.getElementById(id); if (el) el.value = '';
   });
   document.getElementById('dbModalTitle').textContent = 'Add Database';
+  delete document.getElementById('dbModal').dataset.editId;
   openModal('dbModal');
 }
 
-function saveDatabase() {
-  const name  = document.getElementById('dbLabel')?.value.trim();
-  const key   = document.getElementById('dbName')?.value.trim();
+async function saveDatabase() {
+  const name    = document.getElementById('dbLabel')?.value.trim();
+  const key     = document.getElementById('dbName')?.value.trim();
+  const version = document.getElementById('dbVersion')?.value.trim();
+  const status  = document.getElementById('dbStatus')?.value || 'active';
   if (!name || !key) { showToast('Name and Key are required', 'error'); return; }
-  const newId = dbData.length ? Math.max(...dbData.map(d => d.id)) + 1 : 1;
-  dbData.push({ id: newId, name, key, icon: '🗄', rules: 0, sessions: 0, enabled: true });
-  renderDatabases();
-  showToast(`Database "${name}" added`, 'success');
-  closeModal('dbModal');
+
+  const editId = document.getElementById('dbModal').dataset.editId;
+  try {
+    if (editId) {
+      await apiCall(`/api/databases/${editId}`, { method: 'PUT', body: JSON.stringify({ name, key, version, status }) });
+      showToast(`Database "${name}" updated`, 'success');
+    } else {
+      await apiCall('/api/databases', { method: 'POST', body: JSON.stringify({ name, key, version, status, enabled: true }) });
+      showToast(`Database "${name}" added`, 'success');
+    }
+    closeModal('dbModal');
+    await fetchDatabases();
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'error');
+  }
 }
 
 // ════════════════════════════════════════════════════════════
 //  SESSION MONITOR
 // ════════════════════════════════════════════════════════════
 
-const sessionData = []; // Mockup cleared
+let sessionData = []; // populated from API
+
+async function fetchSessions() {
+  try {
+    const data = await apiCall('/api/sessions');
+    const payload = data.data || {};
+    sessionData = payload.sessions || [];
+    const stats  = payload.stats   || { active: 0, warning: 0, expired: 0 };
+
+    const elActive   = document.getElementById('sessActive');
+    const elExpiring = document.getElementById('sessExpiring');
+    const elExpired  = document.getElementById('sessExpired');
+    if (elActive)   elActive.textContent   = stats.active;
+    if (elExpiring) elExpiring.textContent = stats.warning;
+    if (elExpired)  elExpired.textContent  = stats.expired;
+
+    const liveBadge = document.querySelector('.nav-item[data-page="sessions"] .nav-badge.live');
+    if (liveBadge) liveBadge.textContent = stats.active + stats.warning;
+
+    renderSessions();
+  } catch (e) {
+    showToast('Failed to load sessions: ' + e.message, 'error');
+  }
+}
 
 function renderSessions() {
   const tbody = document.getElementById('sessionBody');
   if (!tbody) return;
 
-  const active   = sessionData.filter(s => s.status === 'active').length;
-  const expiring = sessionData.filter(s => s.status === 'warning').length;
-  const expired  = sessionData.filter(s => s.status === 'expired').length;
-  
-  const elActive   = document.getElementById('sessActive');
-  const elExpiring = document.getElementById('sessExpiring');
-  const elExpired  = document.getElementById('sessExpired');
-  if (elActive)   elActive.textContent   = active;
-  if (elExpiring) elExpiring.textContent = expiring;
-  if (elExpired)  elExpired.textContent  = expired;
-
-  const liveBadge = document.querySelector('.nav-item[data-page="sessions"] .nav-badge.live');
-  if (liveBadge) liveBadge.textContent = active + expiring;
-
   if (!sessionData.length) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">No active sessions found</td></tr>`;
-      return;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">No active sessions found</td></tr>`;
+    return;
   }
 
   tbody.innerHTML = sessionData.map(s => {
@@ -748,29 +970,32 @@ function revokeSession(id) {
   document.getElementById('deleteWarnText').textContent =
     `Revoke session ${id}? The user will be disconnected immediately.`;
   document.getElementById('deleteConfirmBtn').textContent = 'Revoke';
-  document.getElementById('deleteConfirmBtn').onclick = () => {
-    const idx = sessionData.findIndex(s => s.id === id);
-    if (idx !== -1) sessionData.splice(idx, 1);
-    renderSessions();
-    showToast(`Session ${id} revoked`, 'warn');
-    closeModal('deleteModal');
+  document.getElementById('deleteConfirmBtn').onclick = async () => {
+    try {
+      await apiCall(`/api/sessions/${id}`, { method: 'DELETE' });
+      showToast(`Session ${id} revoked`, 'warn');
+      closeModal('deleteModal');
+      await fetchSessions();
+    } catch (e) {
+      showToast('Revoke failed: ' + e.message, 'error');
+    }
   };
   openModal('deleteModal');
 }
 
-function cleanupSessions() {
-  const before = sessionData.length;
-  for (let i = sessionData.length - 1; i >= 0; i--) {
-    if (sessionData[i].status === 'expired') sessionData.splice(i, 1);
+async function cleanupSessions() {
+  try {
+    const data = await apiCall('/api/sessions', { method: 'DELETE' });
+    const removed = data.data?.removed ?? 0;
+    showToast(`${removed} expired session(s) cleaned up`, removed ? 'success' : 'info');
+    await fetchSessions();
+  } catch (e) {
+    showToast('Cleanup failed: ' + e.message, 'error');
   }
-  const removed = before - sessionData.length;
-  renderSessions();
-  showToast(`${removed} expired session(s) cleaned up`, removed ? 'success' : 'info');
 }
 
-function refreshSessions() {
-  // Fetch real sessions here
-  renderSessions();
+async function refreshSessions() {
+  await fetchSessions();
   showToast('Sessions refreshed', 'success');
 }
 
@@ -790,6 +1015,8 @@ function setLogFilter(level, btn) {
 
 // ── ดึง logs จาก API ───────────────────────────────────────
 async function fetchLogs() {
+  const token = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
+  if (!token) return;
   try {
     const data = await apiCall('/api/logs');
     const terminal = document.getElementById('logTerminal');
@@ -865,6 +1092,8 @@ function toggleAutoScroll() {
 
 // ── Polling logs ทุก 10 วิ (แทน mock array เดิม) ──────────
 setInterval(async () => {
+  const token = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
+  if (!token) return;
   const terminal = document.getElementById('logTerminal');
   if (!terminal) return;
   try {
@@ -956,9 +1185,9 @@ if (globalSearch) {
 // ════════════════════════════════════════════════════════════
 
 function init() {
-  renderMappingTable();
-  renderDatabases();
-  renderSessions();
+  fetchMappings();
+  fetchDatabases();
+  fetchSessions();
   fetchLogs();
   refreshDashboard();
 }

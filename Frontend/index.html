@@ -1148,7 +1148,7 @@ function mountApp(session) {
   if (sidebarRole)   sidebarRole.textContent   = session.role;
 
   if (typeof navigate === 'function') navigate('dashboard');
-  if (typeof init === 'function') init();
+  setTimeout(() => { if (typeof init === 'function') init(); }, 150);
 }
 
 window.doLogout = function() {
