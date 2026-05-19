@@ -1,9 +1,38 @@
 /* ============================================================
-   BA Tool — Admin Console  |  app.js
+   BA Tool — Admin Console  |  app.js (Cleaned - No Mockup)
    Compatible with index.html + styles.css (responsive)
    ============================================================ */
 
 'use strict';
+
+// ════════════════════════════════════════════════════════════
+//  API CONFIG
+//  เปลี่ยน API_URL เป็น Render URL ตอน deploy จริง
+//  เช่น: 'https://ba-tool-backend.onrender.com'
+// ════════════════════════════════════════════════════════════
+
+const API_URL = 'http://localhost:8000';
+
+async function apiCall(path, options = {}) {
+  const token = localStorage.getItem('ba_token');
+  const res = await fetch(API_URL + path, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    ...options,
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    // token หมดอายุ → logout อัตโนมัติ
+    if (res.status === 401) {
+      localStorage.removeItem('ba_token');
+      if (typeof doLogout === 'function') doLogout();
+    }
+    throw new Error(data.detail || data.message || `HTTP ${res.status}`);
+  }
+  return data;
+}
 
 // ════════════════════════════════════════════════════════════
 //  THEME — persist ใน localStorage
@@ -29,7 +58,6 @@ function applyTheme(theme) {
 const sidebar   = document.getElementById('sidebar');
 const mainWrap  = document.getElementById('mainWrap');
 
-// สร้าง overlay backdrop สำหรับมือถือ (ถ้ายังไม่มีใน HTML)
 let sidebarOverlay = document.querySelector('.sidebar-overlay');
 if (!sidebarOverlay) {
   sidebarOverlay = document.createElement('div');
@@ -42,7 +70,7 @@ function isMobile() { return window.innerWidth <= 768; }
 function openMobileSidebar() {
   sidebar.classList.add('mobile-open');
   sidebarOverlay.classList.add('active');
-  document.body.style.overflow = 'hidden'; // ป้องกัน scroll ด้านหลัง
+  document.body.style.overflow = 'hidden'; 
 }
 
 function closeMobileSidebar() {
@@ -51,24 +79,20 @@ function closeMobileSidebar() {
   document.body.style.overflow = '';
 }
 
-// Overlay คลิกปิด sidebar
 sidebarOverlay.addEventListener('click', closeMobileSidebar);
 
-// Toggle sidebar — แยก desktop (collapsed) กับ mobile (drawer)
 const sidebarToggle = document.getElementById('sidebarToggle');
 if (sidebarToggle) {
   sidebarToggle.addEventListener('click', () => {
     if (isMobile()) {
       sidebar.classList.contains('mobile-open') ? closeMobileSidebar() : openMobileSidebar();
     } else {
-      // desktop: collapsed ↔ expanded
       const collapsed = sidebar.classList.toggle('collapsed');
       mainWrap.classList.toggle('expanded', collapsed);
     }
   });
 }
 
-// ปิด sidebar มือถือเมื่อ resize ขึ้นไป desktop
 window.addEventListener('resize', () => {
   if (!isMobile()) {
     closeMobileSidebar();
@@ -81,19 +105,15 @@ window.addEventListener('resize', () => {
 // ════════════════════════════════════════════════════════════
 
 function navigate(page) {
-  // ซ่อนทุกหน้า
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
 
-  // แสดงหน้าที่เลือก
   const target = document.getElementById('page-' + page);
   if (target) target.classList.remove('hidden');
 
-  // อัป active nav
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const activeNav = document.querySelector(`.nav-item[data-page="${page}"]`);
   if (activeNav) activeNav.classList.add('active');
 
-  // อัป breadcrumb
   const bcPage = document.getElementById('bcPage');
   if (bcPage) {
     const labels = {
@@ -107,11 +127,9 @@ function navigate(page) {
     bcPage.textContent = labels[page] || page;
   }
 
-  // ปิด sidebar มือถือหลัง navigate
   if (isMobile()) closeMobileSidebar();
 }
 
-// ผูก nav items
 document.querySelectorAll('.nav-item[data-page]').forEach(item => {
   item.addEventListener('click', e => {
     e.preventDefault();
@@ -131,7 +149,6 @@ if (themeToggle) {
   });
 }
 
-// Settings theme toggle sync
 function toggleThemeFromSettings(checkbox) {
   applyTheme(checkbox.checked ? 'light' : 'dark');
 }
@@ -146,7 +163,6 @@ function toggleAvatarMenu() {
 function closeAvatarMenu() {
   document.getElementById('avatarDropdown')?.classList.add('hidden');
 }
-// ปิดเมื่อคลิกนอก dropdown
 document.addEventListener('click', e => {
   const wrap = document.getElementById('avatarWrap');
   if (wrap && !wrap.contains(e.target)) closeAvatarMenu();
@@ -171,7 +187,6 @@ function showToast(message, type = 'info') {
 
   toastContainer.appendChild(toast);
 
-  // Auto remove
   setTimeout(() => {
     toast.classList.add('out');
     setTimeout(() => toast.remove(), 220);
@@ -192,14 +207,12 @@ function closeModal(id) {
   if (el) el.classList.add('hidden');
 }
 
-// คลิก overlay ปิด modal
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', e => {
     if (e.target === overlay) overlay.classList.add('hidden');
   });
 });
 
-// กด ESC ปิด modal ที่เปิดอยู่
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.querySelectorAll('.modal-overlay:not(.hidden)').forEach(m => m.classList.add('hidden'));
@@ -211,29 +224,42 @@ document.addEventListener('keydown', e => {
 //  DASHBOARD
 // ════════════════════════════════════════════════════════════
 
-function refreshDashboard() {
-  showToast('Dashboard refreshed', 'success');
+async function refreshDashboard() {
+  try {
+    const start = Date.now();
+    const [health, systemStatus] = await Promise.all([
+      apiCall('/api/health'),
+      apiCall('/api/system/status'),
+    ]);
+    const ping = Date.now() - start;
+
+    // อัปเดต status cards
+    const cards = document.querySelectorAll('.status-card');
+    if (cards[0]) {
+      cards[0].querySelector('.sc-val').textContent = health.success ? 'Online' : 'Error';
+      cards[0].querySelector('.sc-ping').textContent = `${ping} ms`;
+      cards[0].querySelector('.sc-indicator').className =
+        `sc-indicator ${health.success ? 'online' : 'offline'}`;
+    }
+
+    // อัปเดต system status บน sidebar
+    const statusDot   = document.querySelector('.status-dot');
+    const statusLabel = document.querySelector('.status-label');
+    const isRunning   = systemStatus.data?.status === 'running';
+    if (statusDot)   statusDot.className   = `status-dot ${isRunning ? 'online' : 'offline'}`;
+    if (statusLabel) statusLabel.textContent = isRunning ? 'System Online' : 'System Stopped';
+
+    showToast(`Dashboard refreshed — system ${systemStatus.data?.status}`, 'success');
+  } catch (e) {
+    showToast('Refresh failed: ' + e.message, 'error');
+  }
 }
 
 // ════════════════════════════════════════════════════════════
 //  MAPPING MANAGER
 // ════════════════════════════════════════════════════════════
 
-// --- ข้อมูล sample ---
-const mappingData = [
-  { id:1,  srcDb:'sqlserver',  rawType:'int',            logicalType:'integer',  masterType:'INTEGER', destDb:'confluent',   finalType:'int',            confidence:98, status:'active',     updated:'2025-03-14' },
-  { id:2,  srcDb:'sqlserver',  rawType:'varchar',         logicalType:'string',   masterType:'STRING',  destDb:'confluent',   finalType:'string',         confidence:95, status:'active',     updated:'2025-03-14' },
-  { id:3,  srcDb:'sqlserver',  rawType:'datetime',        logicalType:'datetime', masterType:'TIMESTAMP',destDb:'confluent',  finalType:'long',           confidence:91, status:'active',     updated:'2025-03-13' },
-  { id:4,  srcDb:'postgresql', rawType:'uuid',            logicalType:'uuid',     masterType:'UUID',    destDb:'confluent',   finalType:'string',         confidence:88, status:'active',     updated:'2025-03-12' },
-  { id:5,  srcDb:'postgresql', rawType:'jsonb',           logicalType:'json',     masterType:'JSON',    destDb:'confluent',   finalType:'string',         confidence:72, status:'draft',      updated:'2025-03-11' },
-  { id:6,  srcDb:'mysql',      rawType:'tinyint(1)',      logicalType:'boolean',  masterType:'BOOLEAN', destDb:'confluent',   finalType:'boolean',        confidence:96, status:'active',     updated:'2025-03-10' },
-  { id:7,  srcDb:'mysql',      rawType:'decimal(10,2)',   logicalType:'decimal',  masterType:'DECIMAL', destDb:'postgresql',  finalType:'numeric(10,2)',  confidence:93, status:'active',     updated:'2025-03-09' },
-  { id:8,  srcDb:'oracle',     rawType:'NUMBER',          logicalType:'number',   masterType:'DOUBLE',  destDb:'confluent',   finalType:'double',         confidence:84, status:'deprecated', updated:'2025-03-08' },
-  { id:9,  srcDb:'oracle',     rawType:'VARCHAR2',        logicalType:'string',   masterType:'STRING',  destDb:'postgresql',  finalType:'varchar',        confidence:90, status:'active',     updated:'2025-03-07' },
-  { id:10, srcDb:'sqlserver',  rawType:'uniqueidentifier',logicalType:'uuid',     masterType:'UUID',    destDb:'mysql',       finalType:'char(36)',       confidence:87, status:'beta',       updated:'2025-03-06' },
-  { id:11, srcDb:'postgresql', rawType:'timestamp',       logicalType:'datetime', masterType:'TIMESTAMP',destDb:'mysql',      finalType:'datetime',       confidence:94, status:'active',     updated:'2025-03-05' },
-  { id:12, srcDb:'mysql',      rawType:'text',            logicalType:'string',   masterType:'STRING',  destDb:'confluent',   finalType:'string',         confidence:99, status:'active',     updated:'2025-03-04' },
-];
+const mappingData = []; // Mockup cleared. Waiting for API data.
 
 let mappingCurrentPage = 1;
 const MAPPING_PAGE_SIZE = 8;
@@ -297,7 +323,6 @@ function renderMappingTable() {
     `).join('');
   }
 
-  // count
   const countEl = document.getElementById('mappingCount');
   if (countEl) countEl.textContent = `Showing ${filtered.length} rules`;
 
@@ -373,6 +398,7 @@ function deleteMapping(id) {
   document.getElementById('deleteWarnText').textContent =
     `Delete mapping "${mappingData[idx].rawType} → ${mappingData[idx].finalType}"? This cannot be undone.`;
   document.getElementById('deleteConfirmBtn').onclick = () => {
+    // API Call to delete here
     mappingData.splice(idx, 1);
     selectedMappings.delete(id);
     renderMappingTable();
@@ -430,7 +456,7 @@ function saveMapping() {
     masterType:  document.getElementById('mMasterType')?.value.trim() || '',
     destDb:      document.getElementById('mDestDb')?.value || 'confluent',
     finalType:   document.getElementById('mFinalType')?.value.trim() || '',
-    confidence:  80,
+    confidence:  100,
     status:      document.getElementById('mStatus')?.value || 'draft',
     updated:     new Date().toISOString().slice(0, 10),
   });
@@ -444,16 +470,7 @@ function openBulkImport() {
 }
 
 // ── AI Generate ────────────────────────────────────────────
-const aiSuggestions = [
-  { src:'bigint',    raw:'bigint',      logical:'integer',  final:'long',    confidence:97 },
-  { src:'nvarchar',  raw:'nvarchar',    logical:'string',   final:'string',  confidence:95 },
-  { src:'bit',       raw:'bit',         logical:'boolean',  final:'boolean', confidence:99 },
-  { src:'float',     raw:'float',       logical:'decimal',  final:'double',  confidence:91 },
-  { src:'date',      raw:'date',        logical:'date',     final:'int',     confidence:88 },
-  { src:'time',      raw:'time',        logical:'time',     final:'long',    confidence:84 },
-  { src:'xml',       raw:'xml',         logical:'string',   final:'string',  confidence:70 },
-  { src:'geography', raw:'geography',   logical:'bytes',    final:'bytes',   confidence:62 },
-];
+const aiSuggestions = []; // Mockup cleared
 let aiDecisions = {};
 
 function openAIGenerate() {
@@ -474,8 +491,8 @@ function runAIGenerate() {
   btn.textContent = '⟳ Generating…';
   btn.disabled = true;
 
+  // Placeholder for real API call
   setTimeout(() => {
-    // reset decisions
     aiDecisions = {};
     aiSuggestions.forEach((_, i) => aiDecisions[i] = 'pending');
 
@@ -493,6 +510,12 @@ function runAIGenerate() {
 function renderAIReview() {
   const tbody = document.getElementById('reviewBody');
   if (!tbody) return;
+  
+  if (!aiSuggestions.length) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">No suggestions generated</td></tr>`;
+      return;
+  }
+
   tbody.innerHTML = aiSuggestions.map((s, i) => `
     <tr id="aiRow_${i}" class="${aiDecisions[i]==='approved'?'approved':aiDecisions[i]==='rejected'?'rejected':''}">
       <td>${s.src}</td>
@@ -567,25 +590,22 @@ function saveApproved() {
 //  DATABASE REGISTRY
 // ════════════════════════════════════════════════════════════
 
-const dbData = [
-  { id:1, name:'SQL Server',    key:'sqlserver',   icon:'🗄', rules:482, sessions:3,  enabled:true },
-  { id:2, name:'PostgreSQL',    key:'postgresql',  icon:'🐘', rules:391, sessions:1,  enabled:true },
-  { id:3, name:'MySQL',         key:'mysql',       icon:'🐬', rules:218, sessions:2,  enabled:true },
-  { id:4, name:'Oracle',        key:'oracle',      icon:'🔴', rules:167, sessions:0,  enabled:false },
-  { id:5, name:'Confluent AVRO',key:'confluent',   icon:'⚡', rules:0,   sessions:6,  enabled:true },
-  { id:6, name:'Snowflake',     key:'snowflake',   icon:'❄', rules:43,  sessions:0,  enabled:false },
-  { id:7, name:'DB2',           key:'db2',         icon:'💠', rules:28,  sessions:0,  enabled:false },
-  { id:8, name:'BigQuery',      key:'bigquery',    icon:'☁', rules:12,  sessions:0,  enabled:false },
-];
+const dbData = []; // Mockup cleared
 
 function renderDatabases() {
   const grid = document.getElementById('dbGrid');
   if (!grid) return;
+  
+  if (!dbData.length) {
+      grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text3); border: 1px dashed var(--border2); border-radius: var(--radius);">No databases configured</div>`;
+      return;
+  }
+
   grid.innerHTML = dbData.map(db => `
     <div class="db-card">
       <div class="db-card-header">
         <div class="db-card-info">
-          <div class="db-logo">${db.icon}</div>
+          <div class="db-logo">${db.icon || '🗄'}</div>
           <div>
             <div class="db-card-name">${db.name}</div>
             <div class="db-card-key">${db.key}</div>
@@ -676,21 +696,16 @@ function saveDatabase() {
 //  SESSION MONITOR
 // ════════════════════════════════════════════════════════════
 
-const sessionData = [
-  { id:'a3f9c2d1', user:'superadmin@ba.local',  role:'Admin',     db:'sqlserver→confluent', tables:120, created:'2026-05-18 11:50', ttl:45,  status:'active' },
-  { id:'b1e7f3a2', user:'dev01@ba.local',        role:'Developer', db:'postgresql→confluent',tables:34,  created:'2026-05-18 12:10', ttl:22,  status:'active' },
-  { id:'c5d2g8h4', user:'dev02@ba.local',        role:'Developer', db:'mysql→confluent',     tables:88,  created:'2026-05-18 10:30', ttl:3,   status:'warning' },
-  { id:'d0f1h2k9', user:'viewer01@ba.local',     role:'Viewer',    db:'sqlserver→postgresql',tables:12,  created:'2026-05-18 09:00', ttl:0,   status:'expired' },
-];
+const sessionData = []; // Mockup cleared
 
 function renderSessions() {
   const tbody = document.getElementById('sessionBody');
   if (!tbody) return;
 
-  // Update stat counters
   const active   = sessionData.filter(s => s.status === 'active').length;
   const expiring = sessionData.filter(s => s.status === 'warning').length;
   const expired  = sessionData.filter(s => s.status === 'expired').length;
+  
   const elActive   = document.getElementById('sessActive');
   const elExpiring = document.getElementById('sessExpiring');
   const elExpired  = document.getElementById('sessExpired');
@@ -698,9 +713,13 @@ function renderSessions() {
   if (elExpiring) elExpiring.textContent = expiring;
   if (elExpired)  elExpired.textContent  = expired;
 
-  // อัป live badge ใน sidebar
   const liveBadge = document.querySelector('.nav-item[data-page="sessions"] .nav-badge.live');
   if (liveBadge) liveBadge.textContent = active + expiring;
+
+  if (!sessionData.length) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">No active sessions found</td></tr>`;
+      return;
+  }
 
   tbody.innerHTML = sessionData.map(s => {
     const ttlClass = s.ttl === 0 ? 'expired' : s.ttl < 10 ? 'warn' : 'ok';
@@ -750,6 +769,7 @@ function cleanupSessions() {
 }
 
 function refreshSessions() {
+  // Fetch real sessions here
   renderSessions();
   showToast('Sessions refreshed', 'success');
 }
@@ -766,6 +786,37 @@ function setLogFilter(level, btn) {
   document.querySelectorAll('.log-filter-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   filterLogs();
+}
+
+// ── ดึง logs จาก API ───────────────────────────────────────
+async function fetchLogs() {
+  try {
+    const data = await apiCall('/api/logs');
+    const terminal = document.getElementById('logTerminal');
+    if (!terminal) return;
+    terminal.innerHTML = '';
+    (data.data || []).forEach(entry => {
+      appendLogLine(terminal, entry.timestamp, entry.level, entry.message);
+    });
+    if (logAutoScroll) terminal.scrollTop = terminal.scrollHeight;
+  } catch (e) {
+    showToast('Failed to load logs: ' + e.message, 'error');
+  }
+}
+
+function appendLogLine(terminal, timestamp, level, message) {
+  const ts = (timestamp || new Date().toISOString()).slice(0, 19).replace('T', ' ');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `
+    <span class="log-ts">${ts}</span>
+    <span class="log-lvl ${level.toLowerCase()}">${level}</span>
+    <span class="log-msg">${message}</span>
+  `;
+  terminal.appendChild(line);
+  // จำกัดสูงสุด 200 บรรทัด
+  const lines = terminal.querySelectorAll('.log-line');
+  if (lines.length > 200) lines[0].remove();
 }
 
 function filterLogs() {
@@ -812,54 +863,33 @@ function toggleAutoScroll() {
   showToast(`Auto-scroll ${logAutoScroll ? 'enabled' : 'paused'}`, 'info');
 }
 
-// Simulate live log entries
-const liveLogs = [
-  { lvl:'INFO',  msg:'GET /api/v2/schemas — 200 OK (28ms)' },
-  { lvl:'INFO',  msg:'POST /api/v2/sessions/export — 200 OK (412ms)' },
-  { lvl:'WARN',  msg:'Cache utilization at 71% — consider cleanup' },
-  { lvl:'INFO',  msg:'Schema sync triggered by superadmin' },
-  { lvl:'ERROR', msg:'Connection timeout: db2→confluent pair not found' },
-  { lvl:'INFO',  msg:'Cleanup task: removed 1 expired session' },
-  { lvl:'DEBUG', msg:'Mapping lookup: sqlserver.varchar → confluent.string (cache hit)' },
-  { lvl:'INFO',  msg:'Health check passed — all monitored services nominal' },
-];
-
-let liveLogIdx = 0;
-setInterval(() => {
+// ── Polling logs ทุก 10 วิ (แทน mock array เดิม) ──────────
+setInterval(async () => {
   const terminal = document.getElementById('logTerminal');
   if (!terminal) return;
-  const entry = liveLogs[liveLogIdx % liveLogs.length];
-  liveLogIdx++;
-  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-  const line = document.createElement('div');
-  line.className = 'log-line';
-  line.innerHTML = `
-    <span class="log-ts">${now}</span>
-    <span class="log-lvl ${entry.lvl.toLowerCase()}">${entry.lvl}</span>
-    <span class="log-msg">${entry.msg}</span>
-  `;
-  terminal.appendChild(line);
-
-  // trim เกิน 200 บรรทัด
-  const lines = terminal.querySelectorAll('.log-line');
-  if (lines.length > 200) lines[0].remove();
-
-  if (logAutoScroll) terminal.scrollTop = terminal.scrollHeight;
-
-  // re-apply filter
-  filterLogs();
-}, 5000);
+  try {
+    const data = await apiCall('/api/logs');
+    const entries = data.data || [];
+    // เพิ่มเฉพาะ entry ล่าสุด (entry สุดท้าย) เป็น live indicator
+    if (entries.length > 0) {
+      const last = entries[entries.length - 1];
+      appendLogLine(terminal, new Date().toISOString(), last.level, last.message);
+      if (logAutoScroll) terminal.scrollTop = terminal.scrollHeight;
+      filterLogs();
+    }
+  } catch (_) {
+    // เงียบถ้า poll ไม่ได้ — ไม่ขึ้น toast spam
+  }
+}, 10000);
 
 // ════════════════════════════════════════════════════════════
 //  SETTINGS
 // ════════════════════════════════════════════════════════════
 
 function switchSettings(section, btn) {
-  // toggle nav active
   document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
 
-  // toggle section visibility
   document.querySelectorAll('.settings-section').forEach(s => s.classList.add('hidden'));
   const target = document.getElementById('settings-' + section);
   if (target) target.classList.remove('hidden');
@@ -890,7 +920,6 @@ function rotateApiKey() {
 //  GLOBAL SEARCH
 // ════════════════════════════════════════════════════════════
 
-// แสดง Ctrl+K หรือ ⌘K ตาม OS
 (function setKbdHint() {
   const kbd = document.querySelector('.search-kbd');
   if (kbd) {
@@ -904,7 +933,6 @@ if (globalSearch) {
   globalSearch.addEventListener('input', () => {
     const val = globalSearch.value.trim().toLowerCase();
     if (!val) return;
-    // navigate ไปหน้า mapping ก่อนถ้าไม่ได้อยู่หน้านั้น
     const mappingPage = document.getElementById('page-mapping');
     if (mappingPage?.classList.contains('hidden')) navigate('mapping');
     const mappingSearch = document.getElementById('mappingSearch');
@@ -913,7 +941,6 @@ if (globalSearch) {
       filterMappings();
     }
   });
-  // Keyboard shortcut ⌘K / Ctrl+K
   document.addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
@@ -929,8 +956,9 @@ if (globalSearch) {
 // ════════════════════════════════════════════════════════════
 
 function init() {
-  // Render ล่วงหน้าให้พร้อม
   renderMappingTable();
   renderDatabases();
   renderSessions();
+  fetchLogs();
+  refreshDashboard();
 }
