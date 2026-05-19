@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BA Tool — Admin Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* ══════════════════════════════════════
+       LOGIN OVERLAY
+    ══════════════════════════════════════ */
+
+    /* ซ่อน app ทั้งหมดตอนยังไม่ login */
+    body.logged-out .sidebar,
+    body.logged-out .main-wrap,
+    body.logged-out .sidebar-overlay { display: none !important; }
+
+    /* ── Background grid ── */
+    #login-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    #login-screen.hidden { display: none; }
+
+    /* grid dot pattern */
+    #login-screen::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+      background-size: 28px 28px;
+      pointer-events: none;
+    }
+
+    /* glow blob */
+    #login-screen::after {
+      content: '';
+      position: absolute;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(0,214,143,0.06) 0%, transparent 70%);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    /* ── Card ── */
+    .login-card {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 400px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 16px;
+      padding: 36px 32px 32px;
+      box-shadow: 0 32px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(0,214,143,0.05);
+      animation: loginCardIn .3s cubic-bezier(.22,1,.36,1);
+    }
+
+    @keyframes loginCardIn {
+      from { opacity:0; transform: translateY(20px) scale(.97); }
+      to   { opacity:1; transform: none; }
+    }
+
+    /* ── Logo ── */
+    .login-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+
+    .login-logo-icon {
+      width: 36px; height: 36px;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .login-logo-text .name { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .login-logo-text .sub  { font-size: 10px; color: var(--text3); letter-spacing: .08em; text-transform: uppercase; }
+
+    /* ── Heading ── */
+    .login-heading {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      margin-bottom: 4px;
+    }
+
+    .login-sub {
+      font-size: 12px;
+      color: var(--text2);
+      margin-bottom: 28px;
+    }
+
+    /* ── Form fields ── */
+    .login-field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-bottom: 14px;
+    }
+
+    .login-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: var(--text3);
+    }
+
+    .login-input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .login-input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      padding: 10px 36px 10px 12px;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+
+    .login-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,214,143,.1);
+    }
+
+    .login-input.error {
+      border-color: var(--danger);
+      box-shadow: 0 0 0 3px rgba(255,77,109,.1);
+    }
+
+    .login-input-icon {
+      position: absolute;
+      right: 10px;
+      color: var(--text3);
+      font-size: 14px;
+      cursor: pointer;
+      user-select: none;
+      transition: color .15s;
+      line-height: 1;
+    }
+
+    .login-input-icon:hover { color: var(--text2); }
+
+    /* ── Error message ── */
+    .login-error {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(255,77,109,.08);
+      border: 1px solid rgba(255,77,109,.2);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--danger);
+      margin-bottom: 14px;
+      animation: shakeX .3s ease;
+    }
+
+    .login-error.hidden { display: none; }
+
+    @keyframes shakeX {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-6px); }
+      40%      { transform: translateX(6px); }
+      60%      { transform: translateX(-4px); }
+      80%      { transform: translateX(4px); }
+    }
+
+    /* ── Options row ── */
+    .login-options {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      font-size: 12px;
+    }
+
+    .login-remember {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text2);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .login-remember input[type=checkbox] {
+      accent-color: var(--accent);
+      width: 13px; height: 13px;
+      cursor: pointer;
+    }
+
+    .login-forgot {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 12px;
+      transition: opacity .15s;
+    }
+
+    .login-forgot:hover { opacity: .75; }
+
+    /* ── Submit button ── */
+    .login-btn {
+      width: 100%;
+      padding: 11px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: var(--radius);
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: .01em;
+      transition: opacity .15s, transform .1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+
+    .login-btn:hover  { opacity: .88; }
+    .login-btn:active { transform: scale(.98); }
+
+    .login-btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    /* spinner */
+    .login-spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(0,0,0,.3);
+      border-top-color: #000;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      display: none;
+    }
+
+    .login-btn.loading .login-spinner { display: block; }
+    .login-btn.loading .login-btn-text { display: none; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Footer note ── */
+    .login-footer-note {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 11px;
+      color: var(--text3);
+      font-family: var(--mono);
+    }
+
+    .login-footer-note span { color: var(--accent); }
+
+    /* ── Attempts warning ── */
+    .login-attempts {
+      text-align: center;
+      font-size: 11px;
+      color: var(--warn);
+      margin-top: 8px;
+      font-family: var(--mono);
+      min-height: 16px;
+    }
+
+    /* ── Theme toggle ── */
+    .login-theme-btn {
+      position: absolute;
+      top: 16px; right: 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      color: var(--text2);
+      font-size: 15px;
+      transition: color .15s, background .15s;
+      z-index: 2;
+    }
+
+    .login-theme-btn:hover { color: var(--text); background: var(--surface3); }
+    [data-theme="dark"]  .ti-light { display: none; }
+    [data-theme="light"] .ti-dark  { display: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 480px) {
+      .login-card { padding: 28px 20px 24px; }
+      .login-heading { font-size: 18px; }
+    }
+  </style>
+</head>
+<body class="logged-out">
+
+<!-- ══════════════════════════════════════
+     LOGIN SCREEN
+══════════════════════════════════════ -->
+<div id="login-screen">
+
+  <!-- Theme toggle -->
+  <button class="login-theme-btn" onclick="toggleLoginTheme()" aria-label="Toggle theme">
+    <span class="ti-dark">◑</span>
+    <span class="ti-light">○</span>
+  </button>
+
+  <div class="login-card">
+
+    <!-- Logo -->
+    <div class="login-logo">
+      <div class="login-logo-icon">⬡</div>
+      <div class="login-logo-text">
+        <div class="name">BA Tool</div>
+        <div class="sub">Admin Console</div>
+      </div>
+    </div>
+
+    <!-- Heading -->
+    <div class="login-heading">Welcome back</div>
+    <div class="login-sub">Sign in to access the admin console</div>
+
+    <!-- Error banner -->
+    <div class="login-error hidden" id="loginError">
+      <span>⚠</span>
+      <span id="loginErrorMsg">Invalid username or password</span>
+    </div>
+
+    <!-- Username -->
+    <div class="login-field">
+      <label class="login-label" for="loginUsername">Username</label>
+      <div class="login-input-wrap">
+        <input
+          class="login-input"
+          type="text"
+          id="loginUsername"
+          placeholder="user@ba.local"
+          autocomplete="username"
+          spellcheck="false"
+        />
+        <span class="login-input-icon">◎</span>
+      </div>
+    </div>
+
+    <!-- Password -->
+    <div class="login-field">
+      <label class="login-label" for="loginPassword">Password</label>
+      <div class="login-input-wrap">
+        <input
+          class="login-input"
+          type="password"
+          id="loginPassword"
+          placeholder="••••••••"
+          autocomplete="current-password"
+          id="loginPassword"
+        />
+        <span class="login-input-icon" id="pwToggle" onclick="togglePw()" title="Show/hide password">◉</span>
+      </div>
+    </div>
+
+    <!-- Remember + Forgot -->
+    <div class="login-options">
+      <label class="login-remember">
+        <input type="checkbox" id="rememberMe" />
+        Remember me
+      </label>
+      <a href="#" class="login-forgot" onclick="forgotPassword(event)">Forgot password?</a>
+    </div>
+
+    <!-- Submit -->
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">
+      <div class="login-spinner"></div>
+      <span class="login-btn-text">Sign In</span>
+    </button>
+
+    <!-- Attempt counter -->
+    <div class="login-attempts" id="loginAttempts"></div>
+
+    <!-- Footer -->
+    <div class="login-footer-note">
+      Secured · BA Tool <span>v2.4.1</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Sidebar ─────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-logo">
+      <span class="brand-icon">⬡</span>
+    </div>
+    <div class="brand-text">
+      <div class="brand-name">BA Tool</div>
+      <div class="brand-sub">Admin Console</div>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Overview</div>
+    <a class="nav-item active" data-page="dashboard" href="#">
+      <i class="nav-icon">◈</i>
+      <span>Dashboard</span>
+    </a>
+
+    <div class="nav-section-label">Data</div>
+    <a class="nav-item" data-page="mapping" href="#">
+      <i class="nav-icon">⇄</i>
+      <span>Mapping Manager</span>
+      <span class="nav-badge">1,204</span>
+    </a>
+    <a class="nav-item" data-page="databases" href="#">
+      <i class="nav-icon">◉</i>
+      <span>Database Registry</span>
+    </a>
+
+    <div class="nav-section-label">Monitoring</div>
+    <a class="nav-item" data-page="sessions" href="#">
+      <i class="nav-icon">◎</i>
+      <span>Session Monitor</span>
+      <span class="nav-badge live">3</span>
+    </a>
+    <a class="nav-item" data-page="logs" href="#">
+      <i class="nav-icon">≡</i>
+      <span>Log Viewer</span>
+    </a>
+
+    <div class="nav-section-label">System</div>
+    <a class="nav-item" data-page="settings" href="#">
+      <i class="nav-icon">⚙</i>
+      <span>Settings</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="system-status">
+      <span class="status-dot online"></span>
+      <span class="status-label">System Online</span>
+    </div>
+    <div class="sidebar-version">v2.4.1</div>
+  </div>
+</aside>
+
+<!-- ── Main ───────────────────────────────────────────── -->
+<div class="main-wrap" id="mainWrap">
+
+  <!-- Top Navbar -->
+  <header class="topbar">
+    <button class="topbar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="topbar-breadcrumb">
+      <span class="bc-root">Admin</span>
+      <span class="bc-sep">›</span>
+      <span class="bc-page" id="bcPage">Dashboard</span>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-search">
+        <span class="search-icon">⌕</span>
+        <input type="text" placeholder="Search..." class="search-input" id="globalSearch" />
+        <span class="search-kbd">⌘K</span>
+      </div>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+        <span class="theme-icon-dark">◑</span>
+        <span class="theme-icon-light">○</span>
+      </button>
+      <div class="topbar-avatar">MA</div>
+    </div>
+  </header>
+
+  <!-- Pages -->
+  <main class="page-content">
+
+    <!-- ══════════════════════════════════════
+         PAGE: DASHBOARD
+    ══════════════════════════════════════ -->
+    <div class="page" id="page-dashboard">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Dashboard</h1>
+          <p class="page-desc">System overview and health monitoring</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-ghost" onclick="refreshDashboard()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- Status Row -->
+      <div class="status-row">
+        <div class="status-card">
+          <div class="sc-indicator online"></div>
+          <div class="sc-info">
+            <div class="sc-label">Backend API</div>
+            <div class="sc-val">Online</div>
+          </div>
+          <div class="sc-ping">12ms</div>
+        </div>
+        <div class="status-card">
+          <div class="sc-indicator online"></div>
+          <div class="sc-info">
+            <div class="sc-label">PostgreSQL</div>
+            <div class="sc-val">Connected</div>
+          </div>
+          <div class="sc-ping">3ms</div>
+        </div>
+        <div class="status-card">
+          <div class="sc-indicator warn"></div>
+          <div class="sc-info">
+            <div class="sc-label">Cache Store</div>
+            <div class="sc-val">68% full</div>
+          </div>
+          <div class="sc-ping">—</div>
+        </div>
+        <div class="status-card">
+          <div class="sc-indicator online"></div>
+          <div class="sc-info">
+            <div class="sc-label">AI Service</div>
+            <div class="sc-val">Ready</div>
+          </div>
+          <div class="sc-ping">—</div>
+        </div>
+      </div>
+
+      <!-- Metric Cards -->
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="metric-label">Supported Databases</div>
+          <div class="metric-val">8</div>
+          <div class="metric-sub">+1 this month</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Total Mapping Rules</div>
+          <div class="metric-val">1,204</div>
+          <div class="metric-sub accent">↑ 42 since last week</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Active Sessions</div>
+          <div class="metric-val">3</div>
+          <div class="metric-sub">TTL: 1hr</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Conversions Today</div>
+          <div class="metric-val">127</div>
+          <div class="metric-sub accent">↑ 18% vs yesterday</div>
+        </div>
+      </div>
+
+      <!-- Bottom Grid -->
+      <div class="dash-bottom">
+
+        <!-- DB Compatibility -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Database Coverage</div>
+            <button class="btn btn-ghost btn-sm" onclick="navigate('mapping')">View all →</button>
+          </div>
+          <div class="db-coverage-list" id="dbCoverageList">
+            <div class="db-cov-item">
+              <div class="db-cov-name">SQL Server</div>
+              <div class="db-cov-bar"><div class="db-cov-fill" style="width:98%"></div></div>
+              <div class="db-cov-pct">98%</div>
+            </div>
+            <div class="db-cov-item">
+              <div class="db-cov-name">PostgreSQL</div>
+              <div class="db-cov-bar"><div class="db-cov-fill" style="width:94%"></div></div>
+              <div class="db-cov-pct">94%</div>
+            </div>
+            <div class="db-cov-item">
+              <div class="db-cov-name">MySQL</div>
+              <div class="db-cov-bar"><div class="db-cov-fill" style="width:91%"></div></div>
+              <div class="db-cov-pct">91%</div>
+            </div>
+            <div class="db-cov-item">
+              <div class="db-cov-name">Oracle</div>
+              <div class="db-cov-bar"><div class="db-cov-fill" style="width:87%"></div></div>
+              <div class="db-cov-pct">87%</div>
+            </div>
+            <div class="db-cov-item">
+              <div class="db-cov-name">Confluent (AVRO)</div>
+              <div class="db-cov-bar"><div class="db-cov-fill" style="width:100%"></div></div>
+              <div class="db-cov-pct">100%</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Activity Feed -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Recent Activity</div>
+            <button class="btn btn-ghost btn-sm" onclick="navigate('logs')">View logs →</button>
+          </div>
+          <div class="activity-feed" id="activityFeed">
+            <div class="activity-item">
+              <span class="activity-dot info"></span>
+              <div class="activity-body">
+                <div class="activity-msg">Mapping bulk imported — 42 rules added</div>
+                <div class="activity-time">2 min ago</div>
+              </div>
+            </div>
+            <div class="activity-item">
+              <span class="activity-dot success"></span>
+              <div class="activity-body">
+                <div class="activity-msg">Session <code>a3f9...</code> exported 120 tables</div>
+                <div class="activity-time">8 min ago</div>
+              </div>
+            </div>
+            <div class="activity-item">
+              <span class="activity-dot warn"></span>
+              <div class="activity-body">
+                <div class="activity-msg">Cache at 68% — consider cleanup</div>
+                <div class="activity-time">15 min ago</div>
+              </div>
+            </div>
+            <div class="activity-item">
+              <span class="activity-dot success"></span>
+              <div class="activity-body">
+                <div class="activity-msg">AI mapping generated for Snowflake → AVRO</div>
+                <div class="activity-time">1 hr ago</div>
+              </div>
+            </div>
+            <div class="activity-item">
+              <span class="activity-dot info"></span>
+              <div class="activity-body">
+                <div class="activity-msg">Database "DB2" added to registry</div>
+                <div class="activity-time">3 hr ago</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════
+         PAGE: MAPPING MANAGER
+    ══════════════════════════════════════ -->
+    <div class="page hidden" id="page-mapping">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Mapping Manager</h1>
+          <p class="page-desc">Manage data type conversion rules across database pairs</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-ghost" onclick="openBulkImport()">↑ Bulk Import</button>
+          <button class="btn btn-accent" onclick="openAIGenerate()">✦ AI Generate</button>
+          <button class="btn btn-primary" onclick="openAddMapping()">+ Add Rule</button>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="filter-bar">
+        <div class="filter-search">
+          <span class="search-icon">⌕</span>
+          <input type="text" placeholder="Search type, source, destination..." class="search-input" id="mappingSearch" oninput="filterMappings()" />
+        </div>
+        <select class="filter-select" id="filterSrcDb" onchange="filterMappings()">
+          <option value="">All Source DBs</option>
+          <option>sqlserver</option>
+          <option>postgresql</option>
+          <option>mysql</option>
+          <option>oracle</option>
+        </select>
+        <select class="filter-select" id="filterDestDb" onchange="filterMappings()">
+          <option value="">All Dest DBs</option>
+          <option>confluent</option>
+          <option>postgresql</option>
+          <option>mysql</option>
+        </select>
+        <select class="filter-select" id="filterStatus" onchange="filterMappings()">
+          <option value="">All Status</option>
+          <option>active</option>
+          <option>draft</option>
+          <option>deprecated</option>
+        </select>
+        <div class="filter-count" id="mappingCount">Showing 1,204 rules</div>
+      </div>
+
+      <!-- Table -->
+      <div class="table-card">
+        <div class="table-wrap">
+          <table class="data-table" id="mappingTable">
+            <thead>
+              <tr>
+                <th class="th-check"><input type="checkbox" id="checkAll" onchange="toggleAll(this)" /></th>
+                <th>Source DB</th>
+                <th>Raw Type</th>
+                <th>Logical Type</th>
+                <th>Master Type</th>
+                <th>Dest DB</th>
+                <th>Final Type</th>
+                <th>Confidence</th>
+                <th>Status</th>
+                <th>Updated</th>
+                <th class="th-actions"></th>
+              </tr>
+            </thead>
+            <tbody id="mappingBody"></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <div class="table-bulk" id="tableBulk" style="display:none">
+            <span id="bulkCount">0 selected</span>
+            <button class="btn btn-ghost btn-sm" onclick="bulkApprove()">✓ Approve</button>
+            <button class="btn btn-danger btn-sm" onclick="bulkDelete()">✕ Delete</button>
+          </div>
+          <div class="pagination" id="mappingPagination"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════
+         PAGE: DATABASE REGISTRY
+    ══════════════════════════════════════ -->
+    <div class="page hidden" id="page-databases">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Database Registry</h1>
+          <p class="page-desc">Manage supported database systems and connection pairs</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-primary" onclick="openAddDatabase()">+ Add Database</button>
+        </div>
+      </div>
+
+      <div class="db-grid" id="dbGrid"></div>
+    </div>
+
+    <!-- ══════════════════════════════════════
+         PAGE: SESSION MONITOR
+    ══════════════════════════════════════ -->
+    <div class="page hidden" id="page-sessions">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Session Monitor</h1>
+          <p class="page-desc">Active conversion sessions and cache management</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-ghost" onclick="cleanupSessions()">⊘ Cleanup Expired</button>
+          <button class="btn btn-ghost" onclick="refreshSessions()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <div class="session-stats">
+        <div class="sess-stat"><span class="sess-stat-num" id="sessActive">3</span><span class="sess-stat-label">Active</span></div>
+        <div class="sess-stat"><span class="sess-stat-num warn" id="sessExpiring">1</span><span class="sess-stat-label">Expiring Soon</span></div>
+        <div class="sess-stat"><span class="sess-stat-num muted" id=sessExpired>12</span><span class="sess-stat-label">Expired Today</span></div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Session ID</th>
+                <th>Source DB</th>
+                <th>Tables</th>
+                <th>Created</th>
+                <th>TTL Remaining</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="sessionBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════
+         PAGE: LOG VIEWER
+    ══════════════════════════════════════ -->
+    <div class="page hidden" id="page-logs">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Log Viewer</h1>
+          <p class="page-desc">Real-time backend processing logs</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-ghost" onclick="clearLogs()">⊘ Clear</button>
+          <button class="btn btn-ghost" id="autoScrollBtn" onclick="toggleAutoScroll()">↓ Auto-scroll</button>
+        </div>
+      </div>
+
+      <div class="log-toolbar">
+        <div class="log-filter-group">
+          <button class="log-filter-btn active" data-level="ALL" onclick="setLogFilter('ALL', this)">All</button>
+          <button class="log-filter-btn info" data-level="INFO" onclick="setLogFilter('INFO', this)">INFO</button>
+          <button class="log-filter-btn warn" data-level="WARN" onclick="setLogFilter('WARN', this)">WARN</button>
+          <button class="log-filter-btn error" data-level="ERROR" onclick="setLogFilter('ERROR', this)">ERROR</button>
+          <button class="log-filter-btn debug" data-level="DEBUG" onclick="setLogFilter('DEBUG', this)">DEBUG</button>
+        </div>
+        <div class="filter-search" style="max-width:320px">
+          <span class="search-icon">⌕</span>
+          <input type="text" placeholder="Search logs..." class="search-input" id="logSearch" oninput="filterLogs()" />
+        </div>
+      </div>
+
+      <div class="log-terminal" id="logTerminal">
+        <div class="log-line"><span class="log-ts">2026-05-18 11:46:13</span><span class="log-lvl info">INFO</span><span class="log-msg">ba_tool : 🚀 [2/2] Startup Complete: Server is ready to accept connections.</span></div>
+        <div class="log-line"><span class="log-ts">2026-05-18 11:46:13</span><span class="log-lvl info">INFO</span><span class="log-msg">backend.config.db : ✅ DB pool 'default' initialized (min=2, max=10)</span></div>
+        <div class="log-line"><span class="log-ts">2026-05-18 11:46:20</span><span class="log-lvl info">INFO</span><span class="log-msg">Your service is live 🎉</span></div>
+        <div class="log-line"><span class="log-ts">2026-05-18 11:48:02</span><span class="log-lvl warn">WARN</span><span class="log-msg">Cache utilization at 68% — consider cleanup</span></div>
+        <div class="log-line"><span class="log-ts">2026-05-18 11:50:11</span><span class="log-lvl info">INFO</span><span class="log-msg">📥 Convert 1 file(s) [sqlserver → confluent]</span></div>
+        <div class="log-line"><span class="log-ts">2026-05-18 11:50:12</span><span class="log-lvl info">INFO</span><span class="log-msg">✅ Session a3f9c2d1 created — 120 table(s)</span></div>
+        <div class="log-line"><span class="log-ts">2026-05-18 11:52:45</span><span class="log-lvl error">ERROR</span><span class="log-msg">❌ Failed to load pair mapping (db2→confluent): relation "mappings" does not exist</span></div>
+        <div class="log-line"><span class="log-ts">2026-05-18 11:53:00</span><span class="log-lvl info">INFO</span><span class="log-msg">🧹 Background cleanup: removed 2 expired session(s)</span></div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════
+         PAGE: SETTINGS
+    ══════════════════════════════════════ -->
+    <div class="page hidden" id="page-settings">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Settings</h1>
+          <p class="page-desc">System configuration and preferences</p>
+        </div>
+      </div>
+
+      <div class="settings-layout">
+        <div class="settings-nav">
+          <button class="settings-nav-item active" data-section="general" onclick="switchSettings('general', this)">General</button>
+          <button class="settings-nav-item" data-section="security" onclick="switchSettings('security', this)">Security</button>
+          <button class="settings-nav-item" data-section="ai" onclick="switchSettings('ai', this)">AI Mapping</button>
+          <button class="settings-nav-item" data-section="upload" onclick="switchSettings('upload', this)">Upload</button>
+          <button class="settings-nav-item" data-section="ratelimit" onclick="switchSettings('ratelimit', this)">Rate Limiting</button>
+        </div>
+
+        <div class="settings-body">
+
+          <!-- General -->
+          <div class="settings-section" id="settings-general">
+            <div class="settings-group">
+              <div class="settings-group-title">Appearance</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Theme</div>
+                  <div class="setting-desc">Choose between dark and light mode</div>
+                </div>
+                <div class="setting-control">
+                  <div class="theme-switch-wrap">
+                    <span>Dark</span>
+                    <label class="toggle-switch">
+                      <input type="checkbox" id="settingsThemeToggle" onchange="toggleThemeFromSettings(this)" />
+                      <span class="toggle-track"></span>
+                    </label>
+                    <span>Light</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-group">
+              <div class="settings-group-title">Session Management</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Session TTL</div>
+                  <div class="setting-desc">How long sessions remain active in cache</div>
+                </div>
+                <div class="setting-control">
+                  <div class="input-with-unit">
+                    <input type="number" class="setting-input" value="60" min="5" max="1440" />
+                    <span class="input-unit">minutes</span>
+                  </div>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Auto Cleanup</div>
+                  <div class="setting-desc">Automatically remove expired sessions</div>
+                </div>
+                <div class="setting-control">
+                  <label class="toggle-switch">
+                    <input type="checkbox" checked />
+                    <span class="toggle-track"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Security -->
+          <div class="settings-section hidden" id="settings-security">
+            <div class="settings-group">
+              <div class="settings-group-title">Admin API Key</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Current API Key</div>
+                  <div class="setting-desc">Used to authenticate admin console requests</div>
+                </div>
+                <div class="setting-control" style="flex-direction:column;align-items:flex-start;gap:8px">
+                  <div class="api-key-display">
+                    <input type="password" class="setting-input" id="apiKeyInput" value="sk-admin-xxxxxxxxxxxxxxxx" style="font-family:var(--mono);min-width:280px" />
+                    <button class="btn btn-ghost btn-sm" onclick="toggleApiKey()">Show</button>
+                  </div>
+                  <button class="btn btn-ghost btn-sm" onclick="rotateApiKey()">↻ Rotate Key</button>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">CORS Origins</div>
+                  <div class="setting-desc">Allowed origins for API requests</div>
+                </div>
+                <div class="setting-control">
+                  <textarea class="setting-textarea" rows="3">https://ba-tool.vercel.app
+http://localhost:5500
+http://127.0.0.1:5500</textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Mapping -->
+          <div class="settings-section hidden" id="settings-ai">
+            <div class="settings-group">
+              <div class="settings-group-title">Anthropic API</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">API Key</div>
+                  <div class="setting-desc">Anthropic API key for AI mapping generation</div>
+                </div>
+                <div class="setting-control">
+                  <div class="api-key-display">
+                    <input type="password" class="setting-input" value="sk-ant-xxxxxxxxxxxx" style="font-family:var(--mono);min-width:280px" />
+                    <button class="btn btn-ghost btn-sm">Show</button>
+                  </div>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Model</div>
+                  <div class="setting-desc">Claude model used for mapping generation</div>
+                </div>
+                <div class="setting-control">
+                  <select class="filter-select">
+                    <option selected>claude-sonnet-4-20250514</option>
+                    <option>claude-opus-4</option>
+                    <option>claude-haiku-4</option>
+                  </select>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Auto-Review Required</div>
+                  <div class="setting-desc">Require manual review before saving AI-generated mappings</div>
+                </div>
+                <div class="setting-control">
+                  <label class="toggle-switch">
+                    <input type="checkbox" checked />
+                    <span class="toggle-track"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload -->
+          <div class="settings-section hidden" id="settings-upload">
+            <div class="settings-group">
+              <div class="settings-group-title">File Upload Limits</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Max File Size</div>
+                  <div class="setting-desc">Maximum size per uploaded SQL file</div>
+                </div>
+                <div class="setting-control">
+                  <div class="input-with-unit">
+                    <input type="number" class="setting-input" value="10" min="1" max="100" />
+                    <span class="input-unit">MB</span>
+                  </div>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Max Files per Request</div>
+                  <div class="setting-desc">Maximum number of files per conversion request</div>
+                </div>
+                <div class="setting-control">
+                  <input type="number" class="setting-input" value="20" min="1" max="100" style="width:80px" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Rate Limit -->
+          <div class="settings-section hidden" id="settings-ratelimit">
+            <div class="settings-group">
+              <div class="settings-group-title">Rate Limiting</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Convert Endpoint</div>
+                  <div class="setting-desc">Max requests per minute for /convert</div>
+                </div>
+                <div class="setting-control">
+                  <div class="input-with-unit">
+                    <input type="number" class="setting-input" value="30" min="1" max="1000" />
+                    <span class="input-unit">req/min</span>
+                  </div>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Enable Rate Limiting</div>
+                  <div class="setting-desc">Enforce rate limits on all endpoints</div>
+                </div>
+                <div class="setting-control">
+                  <label class="toggle-switch">
+                    <input type="checkbox" checked />
+                    <span class="toggle-track"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-footer">
+            <button class="btn btn-ghost">Discard changes</button>
+            <button class="btn btn-primary" onclick="saveSettings()">Save changes</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODALS
+══════════════════════════════════════ -->
+
+<!-- Add/Edit Mapping Modal -->
+<div class="modal-overlay hidden" id="mappingModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="mappingModalTitle">Add Mapping Rule</div>
+      <button class="modal-close" onclick="closeModal('mappingModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-field">
+          <label class="form-label">Source DB</label>
+          <select class="form-select" id="mSrcDb">
+            <option>sqlserver</option><option>postgresql</option><option>mysql</option><option>oracle</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Destination DB</label>
+          <select class="form-select" id="mDestDb">
+            <option>confluent</option><option>postgresql</option><option>mysql</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Raw Type</label>
+          <input type="text" class="form-input" id="mRawType" placeholder="e.g. string" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Logical Type</label>
+          <input type="text" class="form-input" id="mLogicalType" placeholder="e.g. uuid" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Master Type</label>
+          <input type="text" class="form-input" id="mMasterType" placeholder="e.g. UUID" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Final Type</label>
+          <input type="text" class="form-input" id="mFinalType" placeholder="e.g. VARCHAR(36)" />
+        </div>
+        <div class="form-field full">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="mStatus">
+            <option>active</option><option>draft</option><option>deprecated</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('mappingModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMapping()">Save Rule</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI Generate Modal -->
+<div class="modal-overlay hidden" id="aiModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">✦ AI Mapping Generator</div>
+      <button class="modal-close" onclick="closeModal('aiModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="aiStep1" class="">
+        <div class="ai-intro">
+          <div class="ai-intro-icon">✦</div>
+          <div class="ai-intro-text">
+            <div class="ai-intro-title">Generate mappings with Claude AI</div>
+            <div class="ai-intro-desc">Select a database pair and Claude will suggest type mappings automatically. You can review and approve each suggestion before saving.</div>
+          </div>
+        </div>
+        <div class="form-grid" style="margin-top:24px">
+          <div class="form-field">
+            <label class="form-label">Source Database</label>
+            <select class="form-select" id="aiSrcDb">
+              <option value="">— Select source —</option>
+              <option>sqlserver</option><option>postgresql</option><option>mysql</option><option>oracle</option><option>db2</option><option>snowflake</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Destination Database</label>
+            <select class="form-select" id="aiDestDb">
+              <option value="">— Select destination —</option>
+              <option>confluent</option><option>postgresql</option><option>mysql</option>
+            </select>
+          </div>
+          <div class="form-field full">
+            <label class="form-label">Additional context (optional)</label>
+            <textarea class="form-textarea" id="aiContext" placeholder="e.g. Focus on temporal types, include COLLATE handling, etc." rows="3"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Review Screen (shown after generation) -->
+      <div id="aiStep2" class="hidden">
+        <div class="review-toolbar">
+          <div class="review-stats">
+            <span class="review-stat"><span class="dot success"></span><span id="rApproved">0</span> approved</span>
+            <span class="review-stat"><span class="dot error"></span><span id="rRejected">0</span> rejected</span>
+            <span class="review-stat"><span class="dot muted"></span><span id="rPending">0</span> pending</span>
+          </div>
+          <div class="review-batch">
+            <button class="btn btn-ghost btn-sm" onclick="batchApprove()">✓ Approve All</button>
+            <button class="btn btn-ghost btn-sm" onclick="batchReject()">✕ Reject All</button>
+          </div>
+        </div>
+        <div class="review-table-wrap">
+          <table class="data-table review-table">
+            <thead>
+              <tr>
+                <th>Source Type</th>
+                <th>Raw Type</th>
+                <th>Logical Type</th>
+                <th>Final Type</th>
+                <th>Confidence</th>
+                <th>Decision</th>
+              </tr>
+            </thead>
+            <tbody id="reviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('aiModal')">Cancel</button>
+      <button class="btn btn-accent" id="aiGenerateBtn" onclick="runAIGenerate()">✦ Generate</button>
+      <button class="btn btn-primary hidden" id="aiSaveBtn" onclick="saveApproved()">Save Approved</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Database Modal -->
+<div class="modal-overlay hidden" id="dbModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="dbModalTitle">Add Database</div>
+      <button class="modal-close" onclick="closeModal('dbModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-field">
+          <label class="form-label">DB Name (internal key)</label>
+          <input type="text" class="form-input" id="dbName" placeholder="e.g. snowflake" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Display Label</label>
+          <input type="text" class="form-input" id="dbLabel" placeholder="e.g. Snowflake" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Version / Edition</label>
+          <input type="text" class="form-input" id="dbVersion" placeholder="e.g. 7.x" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="dbStatus">
+            <option>active</option><option>beta</option><option>disabled</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('dbModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDatabase()">Add Database</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-overlay hidden" id="deleteModal">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title">Confirm Delete</div>
+      <button class="modal-close" onclick="closeModal('deleteModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="delete-warn-text" id="deleteWarnText">Are you sure you want to delete this item? This action cannot be undone.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('deleteModal')">Cancel</button>
+      <button class="btn btn-danger" id="deleteConfirmBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="app.js"></script>
+
+<script>
+/* ══════════════════════════════════════
+   LOGIN LOGIC
+══════════════════════════════════════ */
+
+// ── บัญชีผู้ใช้ที่อนุญาต (ในงานจริงให้ตรวจที่ server) ──
+const VALID_USERS = [
+  { username: 'superadmin@ba.local', password: 'Admin@1234',  role: 'Admin' },
+  { username: 'dev01@ba.local',       password: 'Dev@1234',    role: 'Developer' },
+  { username: 'dev02@ba.local',       password: 'Dev@1234',    role: 'Developer' },
+  { username: 'viewer01@ba.local',    password: 'Viewer@1234', role: 'Viewer' },
+];
+
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS   = 15 * 60 * 1000; // 15 นาที
+
+let failedAttempts = 0;
+let lockedUntil    = null;
+
+// ── ตรวจ session เมื่อโหลดหน้า ──
+(function checkSession() {
+  const remembered = localStorage.getItem('ba_session') || sessionStorage.getItem('ba_session');
+  if (remembered) {
+    try {
+      const data = JSON.parse(remembered);
+      if (data.expiry > Date.now()) { mountApp(data); return; }
+      localStorage.removeItem('ba_session');
+    } catch(_) { localStorage.removeItem('ba_session'); }
+  }
+  // ยังไม่ login
+  document.body.classList.add('logged-out');
+})();
+
+// ── Toggle password ──
+function togglePw() {
+  const input = document.getElementById('loginPassword');
+  const icon  = document.getElementById('pwToggle');
+  if (!input) return;
+  const hide = input.type === 'password';
+  input.type  = hide ? 'text' : 'password';
+  icon.textContent = hide ? '◎' : '◉';
+}
+
+// ── Theme toggle (login screen) ──
+function toggleLoginTheme() {
+  const html = document.documentElement;
+  html.setAttribute('data-theme',
+    html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+}
+
+// ── Forgot password ──
+function forgotPassword(e) {
+  e.preventDefault();
+  showLoginError('Please contact your system administrator to reset your password.', false);
+}
+
+// ── Error banner ──
+function showLoginError(msg, shake = true) {
+  const banner = document.getElementById('loginError');
+  const msgEl  = document.getElementById('loginErrorMsg');
+  if (!banner || !msgEl) return;
+  msgEl.textContent = msg;
+  banner.classList.remove('hidden');
+  if (shake) {
+    banner.style.animation = 'none';
+    requestAnimationFrame(() => { banner.style.animation = ''; });
+  }
+  ['loginUsername','loginPassword'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.add('error'); el.addEventListener('input', () => el.classList.remove('error'), { once: true }); }
+  });
+}
+
+function hideLoginError() {
+  document.getElementById('loginError')?.classList.add('hidden');
+  ['loginUsername','loginPassword'].forEach(id => document.getElementById(id)?.classList.remove('error'));
+}
+
+function updateAttemptCounter() {
+  const el = document.getElementById('loginAttempts');
+  if (!el) return;
+  if (failedAttempts === 0) { el.textContent = ''; return; }
+  const remaining = MAX_ATTEMPTS - failedAttempts;
+  el.textContent = remaining > 0
+    ? `⚠ ${failedAttempts} failed attempt${failedAttempts>1?'s':''} — ${remaining} remaining before lockout`
+    : '';
+}
+
+function isLockedOut() {
+  if (!lockedUntil) return false;
+  if (Date.now() < lockedUntil) return true;
+  lockedUntil = null; failedAttempts = 0;
+  return false;
+}
+
+// ── Main login ──
+function doLogin() {
+  hideLoginError();
+  if (isLockedOut()) {
+    const mins = Math.ceil((lockedUntil - Date.now()) / 60000);
+    showLoginError(`Account locked. Try again in ${mins} minute${mins>1?'s':''}.`, false);
+    return;
+  }
+
+  const username = document.getElementById('loginUsername')?.value.trim();
+  const password = document.getElementById('loginPassword')?.value;
+  const remember = document.getElementById('rememberMe')?.checked;
+
+  if (!username || !password) {
+    showLoginError('Please enter your username and password.');
+    return;
+  }
+
+  const btn = document.getElementById('loginBtn');
+  if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+
+  // Simulate network delay
+  setTimeout(() => {
+    const user = VALID_USERS.find(u => u.username === username && u.password === password);
+
+    if (user) {
+      failedAttempts = 0;
+      document.getElementById('loginAttempts').textContent = '';
+      const sessionData = {
+        username: user.username,
+        role:     user.role,
+        expiry:   Date.now() + (remember ? 7*24*60*60*1000 : 8*60*60*1000),
+      };
+      if (remember) localStorage.setItem('ba_session', JSON.stringify(sessionData));
+      else          sessionStorage.setItem('ba_session', JSON.stringify(sessionData));
+      mountApp(sessionData);
+    } else {
+      failedAttempts++;
+      if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+
+      if (failedAttempts >= MAX_ATTEMPTS) {
+        lockedUntil = Date.now() + LOCKOUT_MS;
+        showLoginError('Too many failed attempts. Account locked for 15 minutes.', false);
+        ['loginUsername','loginPassword'].forEach(id => { const el = document.getElementById(id); if(el) el.disabled = true; });
+        if (btn) btn.disabled = true;
+        setTimeout(() => {
+          ['loginUsername','loginPassword'].forEach(id => { const el = document.getElementById(id); if(el) el.disabled = false; });
+          if (btn) btn.disabled = false;
+          hideLoginError(); failedAttempts = 0;
+          document.getElementById('loginAttempts').textContent = '';
+        }, LOCKOUT_MS);
+      } else {
+        showLoginError('Incorrect username or password. Please try again.');
+        updateAttemptCounter();
+        const card = document.querySelector('.login-card');
+        if (card) { card.style.animation = 'none'; requestAnimationFrame(() => { card.style.animation = 'shakeCard .4s ease'; }); }
+      }
+      const pwEl = document.getElementById('loginPassword');
+      if (pwEl) { pwEl.value = ''; pwEl.focus(); }
+    }
+  }, 220);
+}
+
+// ── Mount app หลัง login ──
+function mountApp(session) {
+  const screen = document.getElementById('login-screen');
+  if (screen) {
+    screen.style.transition = 'opacity .3s ease';
+    screen.style.opacity = '0';
+    setTimeout(() => screen.classList.add('hidden'), 300);
+  }
+  document.body.classList.remove('logged-out');
+
+  const avatar = document.querySelector('.topbar-avatar');
+  if (avatar) {
+    const name = session.username.split('@')[0];
+    avatar.textContent = name.slice(0,2).toUpperCase();
+    avatar.title = `${session.username} (${session.role})`;
+  }
+
+  if (typeof navigate === 'function') navigate('dashboard');
+  if (typeof init === 'function') init();
+}
+
+// ── Logout (เรียกจาก app.js ได้) ──
+window.doLogout = function() {
+  sessionStorage.removeItem('ba_session');
+  localStorage.removeItem('ba_session');
+  document.body.classList.add('logged-out');
+  const screen = document.getElementById('login-screen');
+  if (screen) {
+    screen.classList.remove('hidden');
+    screen.style.opacity = '0';
+    requestAnimationFrame(() => { screen.style.transition = 'opacity .3s ease'; screen.style.opacity = '1'; });
+  }
+  ['loginUsername','loginPassword'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  hideLoginError(); failedAttempts = 0;
+  document.getElementById('loginAttempts').textContent = '';
+};
+
+// ── Enter key ──
+['loginUsername','loginPassword'].forEach(id => {
+  document.getElementById(id)?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+    else hideLoginError();
+  });
+});
+
+// ── Extra keyframe ──
+const _s = document.createElement('style');
+_s.textContent = `@keyframes shakeCard{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}`;
+document.head.appendChild(_s);
+</script>
+</body>
+</html>
