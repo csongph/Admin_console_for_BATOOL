@@ -377,7 +377,6 @@
           id="loginPassword"
           placeholder="••••••••"
           autocomplete="current-password"
-          id="loginPassword"
         />
         <span class="login-input-icon" id="pwToggle" onclick="togglePw()" title="Show/hide password">◉</span>
       </div>
@@ -458,11 +457,23 @@
   </nav>
 
   <div class="sidebar-footer">
-    <div class="system-status">
-      <span class="status-dot online"></span>
-      <span class="status-label">System Online</span>
+    <div class="sidebar-footer-top">
+      <div class="sidebar-user-info">
+        <div class="sidebar-user-avatar" id="sidebarAvatar">MA</div>
+        <div class="sidebar-user-text">
+          <div class="sidebar-user-name" id="sidebarUserName">Admin</div>
+          <div class="sidebar-user-role" id="sidebarUserRole">Admin</div>
+        </div>
+      </div>
+      <button class="sidebar-logout-btn" onclick="doLogout()" title="Sign out">⏻</button>
     </div>
-    <div class="sidebar-version">v2.4.1</div>
+    <div class="sidebar-footer-bottom">
+      <div class="system-status">
+        <span class="status-dot online"></span>
+        <span class="status-label">System Online</span>
+      </div>
+      <div class="sidebar-version">v2.4.1</div>
+    </div>
   </div>
 </aside>
 
@@ -489,7 +500,16 @@
         <span class="theme-icon-dark">◑</span>
         <span class="theme-icon-light">○</span>
       </button>
-      <div class="topbar-avatar">MA</div>
+      <div class="topbar-avatar-wrap" id="avatarWrap">
+        <div class="topbar-avatar" id="topbarAvatar" onclick="toggleAvatarMenu()" title="Account menu">MA</div>
+        <div class="avatar-dropdown hidden" id="avatarDropdown">
+          <div class="avatar-dd-user" id="avatarDdUser">—</div>
+          <div class="avatar-dd-role" id="avatarDdRole">—</div>
+          <div class="avatar-dd-sep"></div>
+          <button class="avatar-dd-item" onclick="navigate('settings');closeAvatarMenu()">⚙ Settings</button>
+          <button class="avatar-dd-item danger" onclick="doLogout()">⏻ Sign out</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -1246,7 +1266,8 @@ http://127.0.0.1:5500</textarea>
    LOGIN LOGIC
 ══════════════════════════════════════ */
 
-// ── บัญชีผู้ใช้ที่อนุญาต (ในงานจริงให้ตรวจที่ server) ──
+// ── บัญชีผู้ใช้ที่อนุญาต (ในงานจริงให้ตรวจที่ server-side API) ──
+// ⚠ WARNING: อย่า deploy credentials ใน client-side JS ในงาน production
 const VALID_USERS = [
   { username: 'superadmin@ba.local', password: 'Admin@1234',  role: 'Admin' },
   { username: 'dev01@ba.local',       password: 'Dev@1234',    role: 'Developer' },
@@ -1409,12 +1430,29 @@ function mountApp(session) {
   }
   document.body.classList.remove('logged-out');
 
-  const avatar = document.querySelector('.topbar-avatar');
+  const name = session.username.split('@')[0];
+  const initials = name.slice(0,2).toUpperCase();
+
+  // Topbar avatar
+  const avatar = document.getElementById('topbarAvatar');
   if (avatar) {
-    const name = session.username.split('@')[0];
-    avatar.textContent = name.slice(0,2).toUpperCase();
+    avatar.textContent = initials;
     avatar.title = `${session.username} (${session.role})`;
   }
+
+  // Avatar dropdown user info
+  const ddUser = document.getElementById('avatarDdUser');
+  const ddRole = document.getElementById('avatarDdRole');
+  if (ddUser) ddUser.textContent = session.username;
+  if (ddRole) ddRole.textContent = session.role;
+
+  // Sidebar user info
+  const sidebarAvatar = document.getElementById('sidebarAvatar');
+  const sidebarName   = document.getElementById('sidebarUserName');
+  const sidebarRole   = document.getElementById('sidebarUserRole');
+  if (sidebarAvatar) sidebarAvatar.textContent = initials;
+  if (sidebarName)   sidebarName.textContent   = name;
+  if (sidebarRole)   sidebarRole.textContent   = session.role;
 
   if (typeof navigate === 'function') navigate('dashboard');
   if (typeof init === 'function') init();

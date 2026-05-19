@@ -177,13 +177,102 @@ body {
   50% { opacity: .5 }
 }
 
+/* ── Sidebar Footer ────────────────────────────────── */
 .sidebar-footer {
-  padding: 12px 14px;
   border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sidebar-footer-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 10px 12px;
+  gap: 8px;
 }
+
+.sidebar-user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.sidebar-user-avatar {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-user-text {
+  overflow: hidden;
+}
+
+.sidebar-user-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-user-role {
+  font-size: 10px;
+  color: var(--accent);
+  font-family: var(--mono);
+  letter-spacing: .04em;
+}
+
+/* ── Sidebar logout button ── */
+.sidebar-logout-btn {
+  background: transparent;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text3);
+  font-size: 13px;
+  width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+}
+.sidebar-logout-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: rgba(255,77,109,.08);
+}
+
+.sidebar-footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* Hide sidebar user info elements when collapsed */
+.sidebar.collapsed .sidebar-user-info,
+.sidebar.collapsed .sidebar-logout-btn { display: none; }
+.sidebar.collapsed .sidebar-footer-top { padding: 8px 12px; justify-content: center; }
+.sidebar.collapsed .sidebar-footer-top::after {
+  content: '⏻';
+  font-size: 13px;
+  color: var(--text3);
+  cursor: pointer;
+}
+.sidebar.collapsed .sidebar-footer-bottom { display: none; }
+.sidebar.collapsed .status-label,
+.sidebar.collapsed .sidebar-version { display: none; }
 
 .system-status { display: flex; align-items: center; gap: 6px; overflow: hidden; }
 .status-dot {
@@ -195,8 +284,77 @@ body {
 .status-dot.warn   { background: var(--warn);   box-shadow: 0 0 6px var(--warn); }
 .status-label { font-size: 11px; color: var(--text3); white-space: nowrap; }
 .sidebar-version { font-size: 10px; color: var(--text3); font-family: var(--mono); flex-shrink: 0; }
-.sidebar.collapsed .status-label,
-.sidebar.collapsed .sidebar-version { display: none; }
+
+/* ── Avatar dropdown ────────────────────────────────── */
+.topbar-avatar-wrap {
+  position: relative;
+}
+
+.topbar-avatar { cursor: pointer; }
+
+.avatar-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px rgba(0,0,0,.5);
+  z-index: 500;
+  padding: 8px 0;
+  animation: ddIn .15s cubic-bezier(.22,1,.36,1);
+}
+
+@keyframes ddIn {
+  from { opacity:0; transform:translateY(-6px) scale(.97); }
+  to   { opacity:1; transform:none; }
+}
+
+.avatar-dd-user {
+  padding: 8px 14px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.avatar-dd-role {
+  padding: 0 14px 8px;
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--accent);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.avatar-dd-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.avatar-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text2);
+  font-family: var(--sans);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition), color var(--transition);
+}
+
+.avatar-dd-item:hover { background: var(--surface2); color: var(--text); }
+.avatar-dd-item.danger { color: var(--danger); }
+.avatar-dd-item.danger:hover { background: rgba(255,77,109,.08); color: var(--danger); }
 
 /* Overlay backdrop สำหรับมือถือ */
 .sidebar-overlay {

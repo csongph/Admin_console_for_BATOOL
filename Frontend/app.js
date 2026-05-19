@@ -6,6 +6,23 @@
 'use strict';
 
 // ════════════════════════════════════════════════════════════
+//  THEME — persist ใน localStorage
+// ════════════════════════════════════════════════════════════
+
+(function initTheme() {
+  const saved = localStorage.getItem('ba_theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+})();
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('ba_theme', theme);
+  // sync settings checkbox
+  const cb = document.getElementById('themeCheckbox');
+  if (cb) cb.checked = theme === 'light';
+}
+
+// ════════════════════════════════════════════════════════════
 //  MOBILE SIDEBAR
 // ════════════════════════════════════════════════════════════
 
@@ -109,16 +126,31 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
 const themeToggle = document.getElementById('themeToggle');
 if (themeToggle) {
   themeToggle.addEventListener('click', () => {
-    const html = document.documentElement;
-    const isDark = html.getAttribute('data-theme') === 'dark';
-    html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    applyTheme(isDark ? 'light' : 'dark');
   });
 }
 
 // Settings theme toggle sync
 function toggleThemeFromSettings(checkbox) {
-  document.documentElement.setAttribute('data-theme', checkbox.checked ? 'light' : 'dark');
+  applyTheme(checkbox.checked ? 'light' : 'dark');
 }
+
+// ════════════════════════════════════════════════════════════
+//  AVATAR DROPDOWN
+// ════════════════════════════════════════════════════════════
+
+function toggleAvatarMenu() {
+  document.getElementById('avatarDropdown')?.classList.toggle('hidden');
+}
+function closeAvatarMenu() {
+  document.getElementById('avatarDropdown')?.classList.add('hidden');
+}
+// ปิดเมื่อคลิกนอก dropdown
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('avatarWrap');
+  if (wrap && !wrap.contains(e.target)) closeAvatarMenu();
+});
 
 // ════════════════════════════════════════════════════════════
 //  TOAST NOTIFICATIONS
@@ -165,6 +197,14 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', e => {
     if (e.target === overlay) overlay.classList.add('hidden');
   });
+});
+
+// กด ESC ปิด modal ที่เปิดอยู่
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay:not(.hidden)').forEach(m => m.classList.add('hidden'));
+    closeAvatarMenu();
+  }
 });
 
 // ════════════════════════════════════════════════════════════
@@ -658,6 +698,10 @@ function renderSessions() {
   if (elExpiring) elExpiring.textContent = expiring;
   if (elExpired)  elExpired.textContent  = expired;
 
+  // อัป live badge ใน sidebar
+  const liveBadge = document.querySelector('.nav-item[data-page="sessions"] .nav-badge.live');
+  if (liveBadge) liveBadge.textContent = active + expiring;
+
   tbody.innerHTML = sessionData.map(s => {
     const ttlClass = s.ttl === 0 ? 'expired' : s.ttl < 10 ? 'warn' : 'ok';
     const ttlText  = s.ttl === 0 ? 'Expired' : `${s.ttl}m`;
@@ -846,14 +890,25 @@ function rotateApiKey() {
 //  GLOBAL SEARCH
 // ════════════════════════════════════════════════════════════
 
+// แสดง Ctrl+K หรือ ⌘K ตาม OS
+(function setKbdHint() {
+  const kbd = document.querySelector('.search-kbd');
+  if (kbd) {
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+    kbd.textContent = isMac ? '⌘K' : 'Ctrl+K';
+  }
+})();
+
 const globalSearch = document.getElementById('globalSearch');
 if (globalSearch) {
   globalSearch.addEventListener('input', () => {
     const val = globalSearch.value.trim().toLowerCase();
     if (!val) return;
-    // ถ้าอยู่หน้า mapping ให้ filter ทันที
+    // navigate ไปหน้า mapping ก่อนถ้าไม่ได้อยู่หน้านั้น
+    const mappingPage = document.getElementById('page-mapping');
+    if (mappingPage?.classList.contains('hidden')) navigate('mapping');
     const mappingSearch = document.getElementById('mappingSearch');
-    if (mappingSearch && !document.getElementById('page-mapping')?.classList.contains('hidden')) {
+    if (mappingSearch) {
       mappingSearch.value = val;
       filterMappings();
     }
@@ -863,6 +918,7 @@ if (globalSearch) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
       globalSearch.focus();
+      globalSearch.select();
     }
     if (e.key === 'Escape') globalSearch.blur();
   });
