@@ -591,16 +591,9 @@
         </div>
         <select class="filter-select" id="filterSrcDb" onchange="filterMappings()">
           <option value="">All Source DBs</option>
-          <option>sqlserver</option>
-          <option>postgresql</option>
-          <option>mysql</option>
-          <option>oracle</option>
         </select>
         <select class="filter-select" id="filterDestDb" onchange="filterMappings()">
           <option value="">All Dest DBs</option>
-          <option>confluent</option>
-          <option>postgresql</option>
-          <option>mysql</option>
         </select>
         <select class="filter-select" id="filterStatus" onchange="filterMappings()">
           <option value="">All Status</option>
@@ -618,6 +611,7 @@
               <tr>
                 <th class="th-check"><input type="checkbox" id="checkAll" onchange="toggleAll(this)" /></th>
                 <th>Source DB</th>
+                <th>Source Type</th>
                 <th>Raw Type</th>
                 <th>Logical Type</th>
                 <th>Master Type</th>
@@ -675,7 +669,37 @@
         <div class="sess-stat"><span class="sess-stat-num muted" id=sessExpired>0</span><span class="sess-stat-label">Expired Today</span></div>
       </div>
 
+      <!-- ── Online Users (real-time WebSocket) ─────────────────── -->
+      <div class="table-card" style="margin-bottom:24px">
+        <div class="table-header">
+          <div>
+            <h2 class="table-title">🟢 Online Users <span id="onlineUserCount" style="font-size:13px;color:var(--accent);margin-left:6px">0</span></h2>
+            <p class="table-desc" style="font-size:12px;color:var(--text3)">Live — updates via WebSocket</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Client ID</th>
+                <th>User</th>
+                <th>Page</th>
+                <th>Connected At</th>
+                <th>Last Seen</th>
+              </tr>
+            </thead>
+            <tbody id="onlineUsersBody">
+              <tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text3)">Connecting…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── Conversion Sessions ───────────────────────────────── -->
       <div class="table-card">
+        <div class="table-header">
+          <h2 class="table-title">Conversion Sessions</h2>
+        </div>
         <div class="table-wrap">
           <table class="data-table">
             <thead>

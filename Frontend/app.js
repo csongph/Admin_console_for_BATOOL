@@ -271,12 +271,13 @@ async function refreshDashboard() {
   try {
     const start = Date.now();
 
-    const [health, systemStatus, dbSupport, dbPairs, logs] = await Promise.allSettled([
+    const [health, systemStatus, dbsRes, mappingsRes, sessionsRes, logsRes] = await Promise.allSettled([
       apiCall('/api/health'),
       apiCall('/api/system/status'),
-      fetchBATool('/database-support'),
-      fetchBATool('/db-pairs'),
-      fetchBATool('/logs'),
+      apiCall('/api/databases'),
+      apiCall('/api/mappings'),
+      apiCall('/api/sessions'),
+      apiCall('/api/logs'),
     ]);
 
     const ping = Date.now() - start;
@@ -297,35 +298,38 @@ async function refreshDashboard() {
     if (statusDot)   statusDot.className     = `status-dot ${isRunning ? 'online' : 'offline'}`;
     if (statusLabel) statusLabel.textContent  = isRunning ? 'System Online' : 'System Stopped';
 
-    // ── Parse logs ────────────────────────────────────────
-    const logList = logs.status === 'fulfilled' ? (logs.value || []) : [];
-    const { activeSessions, conversionsToday, warningsToday, createdToday } = parseLogs(logList);
-
     // ── Metric Cards ──────────────────────────────────────
     const metrics = document.querySelectorAll('.metric-card');
 
     // Supported Databases
-    const dbList = dbSupport.status === 'fulfilled'
-      ? (dbSupport.value?.database_support_matrix || []) : [];
+    const dbList = dbsRes.status === 'fulfilled' ? (dbsRes.value?.data || []) : [];
     if (metrics[0]) {
       metrics[0].querySelector('.metric-val').textContent = dbList.length || '-';
-      metrics[0].querySelector('.metric-sub').textContent = dbList.map(d => d.database).join(', ') || '-';
+      metrics[0].querySelector('.metric-sub').textContent = dbList.map(d => d.name).join(', ') || '-';
     }
 
-    // Total Mapping Pairs
-    const pairs = dbPairs.status === 'fulfilled' ? (dbPairs.value?.pairs || []) : [];
+    // Total Mapping Rules
+    const mappingList = mappingsRes.status === 'fulfilled' ? (mappingsRes.value?.data || []) : [];
     if (metrics[1]) {
-      metrics[1].querySelector('.metric-val').textContent = pairs.length || '-';
-      metrics[1].querySelector('.metric-sub').textContent = `${pairs.length} conversion pairs`;
+      metrics[1].querySelector('.metric-val').textContent = mappingList.length || '-';
+      metrics[1].querySelector('.metric-sub').textContent = `${mappingList.length} conversion rules`;
     }
 
     // Active Sessions
+    const sessionPayload = sessionsRes.status === 'fulfilled' ? (sessionsRes.value?.data || {}) : {};
+    const sessionStats   = sessionPayload.stats || { active: 0, warning: 0, expired: 0 };
+    const sessionList    = sessionPayload.sessions || [];
+    const today          = new Date().toISOString().slice(0, 10);
+    const createdToday   = sessionList.filter(s => s.created?.startsWith(today)).length;
     if (metrics[2]) {
-      metrics[2].querySelector('.metric-val').textContent = activeSessions.length;
-      metrics[2].querySelector('.metric-sub').textContent = `${createdToday.length} created today`;
+      metrics[2].querySelector('.metric-val').textContent = sessionStats.active + sessionStats.warning;
+      metrics[2].querySelector('.metric-sub').textContent = `${createdToday} created today`;
     }
 
-    // Conversions Today
+    // Conversions Today (from logs)
+    const logList = logsRes.status === 'fulfilled' ? (logsRes.value?.data || []) : [];
+    const conversionsToday = logList.filter(l => l.message?.includes('Convert') && l.timestamp?.startsWith(today)).length;
+    const warningsToday    = logList.filter(l => l.level === 'WARNING' && l.timestamp?.startsWith(today)).length;
     if (metrics[3]) {
       metrics[3].querySelector('.metric-val').textContent = conversionsToday;
       metrics[3].querySelector('.metric-sub').textContent = warningsToday ? `⚠ ${warningsToday} warning(s) today` : 'No warnings today';
@@ -333,20 +337,20 @@ async function refreshDashboard() {
 
     // ── Database Coverage ─────────────────────────────────
     const coverageList = document.getElementById('dbCoverageList');
-    if (coverageList && dbList.length && pairs.length) {
-      const total = dbList.length - 1 || 1;
+    if (coverageList && dbList.length && mappingList.length) {
       const pairCount = {};
-      pairs.forEach(p => {
-        const key = p.source_db.toLowerCase();
+      mappingList.forEach(m => {
+        const key = (m.src_db || '').toLowerCase();
         pairCount[key] = (pairCount[key] || 0) + 1;
       });
+      const total = Math.max(...Object.values(pairCount), 1);
       coverageList.innerHTML = dbList.map(db => {
-        const key = db.database.toLowerCase().replace(' ', '').replace('sql server', 'sqlserver');
-        const count = pairCount[key] || pairCount[db.database.toLowerCase()] || 0;
-        const pct = Math.round((count / total) * 100);
+        const key   = (db.key || db.name || '').toLowerCase();
+        const count = pairCount[key] || 0;
+        const pct   = Math.round((count / total) * 100);
         return `
           <div class="db-cov-item">
-            <span class="db-cov-name">${db.database}</span>
+            <span class="db-cov-name">${db.name}</span>
             <div class="db-cov-bar"><div class="db-cov-fill" style="width:${pct}%"></div></div>
             <span class="db-cov-pct">${pct}%</span>
           </div>`;
@@ -410,9 +414,29 @@ async function fetchMappings() {
     mappingData = (data.data || []).map(normMapping);
     const badge = document.querySelector('.nav-item[data-page="mapping"] .nav-badge');
     if (badge) badge.textContent = mappingData.length;
+    populateMappingFilters();
     renderMappingTable();
   } catch (e) {
     showToast('Failed to load mappings: ' + e.message, 'error');
+  }
+}
+
+function populateMappingFilters() {
+  const srcDbs  = [...new Set(mappingData.map(m => m.srcDb).filter(Boolean))].sort();
+  const destDbs = [...new Set(mappingData.map(m => m.destDb).filter(Boolean))].sort();
+
+  const srcSel  = document.getElementById('filterSrcDb');
+  const destSel = document.getElementById('filterDestDb');
+
+  if (srcSel) {
+    const cur = srcSel.value;
+    srcSel.innerHTML = '<option value="">All Source DBs</option>' +
+      srcDbs.map(db => `<option value="${db}" ${db === cur ? 'selected' : ''}>${db}</option>`).join('');
+  }
+  if (destSel) {
+    const cur = destSel.value;
+    destSel.innerHTML = '<option value="">All Dest DBs</option>' +
+      destDbs.map(db => `<option value="${db}" ${db === cur ? 'selected' : ''}>${db}</option>`).join('');
   }
 }
 
@@ -442,7 +466,7 @@ function renderMappingTable() {
   if (!tbody) return;
 
   if (!page.length) {
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text3)">No mapping rules found</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:32px;color:var(--text3)">No mapping rules found</td></tr>`;
   } else {
     tbody.innerHTML = page.map(m => `
       <tr>
@@ -451,8 +475,8 @@ function renderMappingTable() {
             onchange="toggleSelect(${m.id}, this.checked)" />
         </td>
         <td class="td-name">${m.srcDb}</td>
-        <td>${m.rawType}</td>
         <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${m.sourceType}</td>
+        <td>${m.rawType}</td>
         <td>${m.logicalType}</td>
         <td>${m.masterType}</td>
         <td>${m.destDb}</td>
@@ -908,6 +932,104 @@ async function saveDatabase() {
 // ════════════════════════════════════════════════════════════
 //  SESSION MONITOR
 // ════════════════════════════════════════════════════════════
+//  PRESENCE — Real-time online user tracking (Admin side)
+// ════════════════════════════════════════════════════════════
+
+let presenceWs       = null;
+let presencePingTimer = null;
+const PRESENCE_PING_INTERVAL = 25_000;
+const PRESENCE_RECONNECT_DELAY = 5_000;
+
+function connectPresence() {
+  if (presenceWs && presenceWs.readyState < 2) return;
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const host  = location.hostname + ':8000'; // Admin Console backend — เปลี่ยนเป็น Render URL ตอน deploy
+  const url   = `${proto}://${host}/ws/presence/admin`;
+  presenceWs  = new WebSocket(url);
+
+  presenceWs.onopen = () => {
+    startPresencePing();
+  };
+
+  presenceWs.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.event === 'update_online_users') {
+        renderOnlineUsers(msg.users || [], msg.total || 0);
+      }
+    } catch { /* ignore */ }
+  };
+
+  presenceWs.onclose = () => {
+    stopPresencePing();
+    setTimeout(connectPresence, PRESENCE_RECONNECT_DELAY);
+  };
+
+  presenceWs.onerror = () => presenceWs.close();
+}
+
+function startPresencePing() {
+  stopPresencePing();
+  presencePingTimer = setInterval(() => {
+    if (presenceWs?.readyState === WebSocket.OPEN) {
+      presenceWs.send(JSON.stringify({ event: 'ping' }));
+    }
+  }, PRESENCE_PING_INTERVAL);
+}
+
+function stopPresencePing() {
+  clearInterval(presencePingTimer);
+}
+
+function renderOnlineUsers(users, total) {
+  // Update counter badge on nav
+  const badge = document.querySelector('.nav-item[data-page="sessions"] .nav-badge.live');
+  if (badge) badge.textContent = total;
+
+  // Update inline count
+  const countEl = document.getElementById('onlineUserCount');
+  if (countEl) countEl.textContent = total;
+
+  // Update stat cards
+  const elActive   = document.getElementById('sessActive');
+  const elExpiring = document.getElementById('sessExpiring');
+  const elExpired  = document.getElementById('sessExpired');
+
+  const active   = users.filter(u => u.idle_seconds < 60).length;
+  const expiring = users.filter(u => u.idle_seconds >= 60 && u.idle_seconds < 90).length;
+  const expired  = 0; // expired users are evicted server-side
+
+  if (elActive)   elActive.textContent   = active;
+  if (elExpiring) elExpiring.textContent = expiring;
+  if (elExpired)  elExpired.textContent  = expired;
+
+  // Render online users table
+  const tbody = document.getElementById('onlineUsersBody');
+  if (!tbody) return;
+
+  if (!users.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text3)">No users online</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = users.map(u => {
+    const idleMin = Math.floor(u.idle_seconds / 60);
+    const idleTxt = idleMin > 0 ? `${idleMin}m ago` : 'just now';
+    const isGuest = !u.user_id;
+    return `
+      <tr>
+        <td style="font-family:var(--mono);font-size:11px">${u.client_id.slice(0,8)}…</td>
+        <td>${isGuest ? '<span style="color:var(--text3)">Guest</span>' : u.user_id}</td>
+        <td style="font-family:var(--mono);font-size:11px">${u.page}</td>
+        <td style="font-size:11px;color:var(--text3)">${u.connected_at?.slice(11,19) || '-'}</td>
+        <td><span class="badge badge-${u.idle_seconds < 60 ? 'active' : 'draft'}">${idleTxt}</span></td>
+      </tr>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════════════════════
+
 
 let sessionData = []; // populated from API
 
@@ -1190,4 +1312,5 @@ function init() {
   fetchSessions();
   fetchLogs();
   refreshDashboard();
+  connectPresence();
 }

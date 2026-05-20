@@ -1,10 +1,12 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import asyncio
 import logging
 
 from app.core.config import settings
 from app.routers import auth, logs, system, health, mappings, databases, sessions
+from app.routers.presence import router as presence_router, _evict_stale
 from app.middleware.logging_middleware import LoggingMiddleware
 from app.db.database import init_db
 
@@ -36,6 +38,8 @@ app.add_middleware(LoggingMiddleware)
 async def on_startup():
     await init_db()
     logger.info("Database tables initialized")
+    asyncio.create_task(_evict_stale())
+    logger.info("Presence heartbeat monitor started")
 
 
 @app.exception_handler(Exception)
@@ -55,3 +59,4 @@ app.include_router(system.router,    prefix="/api/system")
 app.include_router(mappings.router,  prefix="/api")
 app.include_router(databases.router, prefix="/api")
 app.include_router(sessions.router,  prefix="/api")
+app.include_router(presence_router)

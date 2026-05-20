@@ -10,11 +10,13 @@ migrate_mappings.py
 
 import asyncio
 import asyncpg
+from datetime import date
 
 # ── Render DB connection ──────────────────────────────────────────────────────
 RENDER_DSN = (
-    "postgresql://postgres:YOUR_PASSWORD@localhost:5432/sql_converter-multiple_database"
+    "postgresql://postgres:131047@localhost:5432/sql_converter-multiple_database"
 )
+IS_LOCAL = "localhost" in RENDER_DSN  # ตรวจอัตโนมัติ — เปลี่ยน DSN เป็น Render URL ตอน deploy
 
 # ── Mapping ข้อมูลจาก SQL backup ─────────────────────────────────────────────
 
@@ -38,73 +40,77 @@ DATATYPE_STANDARD = {
     28: "NETWORK",        29: "ENUM",
 }
 
-# datatype_raw_mapping: (db_id, raw_type, logical_type, source_type, standard_id)
+# datatype_raw_mapping: (db_id, source_type, raw_type, logical_type, standard_id)
 RAW_MAPPINGS = [
-    (2,"int","int","smallint",18),(2,"long","timestamp-millis","timestamptz",25),
-    (2,"string","json","jsonb",15),(3,"string","json","json",15),
-    (4,"string","xml","xmltype",16),(2,"string","xml","xml",16),
-    (1,"long","long","bigint",2),(1,"bytes","decimal","decimal",3),
-    (1,"float","float","real",4),(1,"double","double","float",5),
-    (1,"boolean","boolean","bit",6),(1,"string","uuid","uniqueidentifier",14),
-    (1,"long","timestamp-millis","datetime",22),(2,"long","long","bigint",2),
-    (2,"int","int","integer",1),(3,"int","int","int",1),(4,"int","int","number(10)",1),
-    (3,"long","timestamp-millis","timestamp",12),(3,"bytes","decimal","decimal",3),
+    (2,"smallint","int","int",18),(2,"timestamptz","long","timestamp-millis",25),
+    (2,"jsonb","string","json",15),(3,"json","string","json",15),
+    (4,"xmltype","string","xml",16),(2,"xml","string","xml",16),
+    (1,"bigint","long","long",2),(1,"decimal","bytes","decimal",3),
+    (1,"real","float","float",4),(1,"float","double","double",5),
+    (1,"bit","boolean","boolean",6),(1,"uniqueidentifier","string","uuid",14),
+    (1,"datetime","long","timestamp-millis",22),(2,"bigint","long","long",2),
+    (2,"integer","int","int",1),(3,"int","int","int",1),(4,"number(10)","int","int",1),
+    (3,"timestamp","long","timestamp-millis",12),(3,"decimal","bytes","decimal",3),
     (3,"float","float","float",4),(3,"double","double","double",5),
-    (3,"boolean","boolean","tinyint(1)",6),(1,"string","datetime-offset","datetimeoffset",25),
-    (1,"int","date","date",10),(4,"string","interval","interval day to second",27),
-    (4,"string","interval","interval year to month",27),
-    (2,"int","date","date",10),(3,"int","date","date",10),(3,"int","date","year",10),
-    (1,"int","time","time",11),(1,"string","json","json",15),
-    (2,"long","time","time",11),(3,"int","time","time",11),
-    (1,"string","xml","xml",16),(4,"long","long","number(19)",2),
-    (4,"bytes","decimal","number",3),(4,"float","float","binary_float",4),
-    (4,"double","double","binary_double",5),(4,"boolean","boolean","number(1)",6),
-    (1,"string","string","char",7),(1,"string","string","text",9),
-    (1,"int","int","tinyint",17),(1,"int","int","smallint",18),
-    (1,"string","string","nvarchar",19),(1,"string","string","nchar",20),
-    (1,"string","string","ntext",21),(1,"long","timestamp-micros","datetime2",23),
-    (1,"long","timestamp-millis","smalldatetime",24),
-    (1,"string","datetime-offset","datetimeoffset",25),
-    (1,"bytes","decimal","money",3),(1,"bytes","decimal","smallmoney",3),
-    (2,"string","string","char",7),(2,"string","string","text",9),
-    (3,"string","string","char",7),(3,"string","string","text",9),
-    (4,"string","string","char",7),(4,"string","string","clob",9),
-    (4,"long","timestamp-millis","date",22),
-    (1,"string","spatial","geometry",26),(1,"string","spatial","geography",26),
-    (2,"string","interval","interval",27),(2,"string","network","inet",28),
-    (2,"string","network","cidr",28),(2,"string","network","macaddr",28),
-    (2,"string","spatial","geometry",26),(3,"string","enum","enum",29),
-    (3,"string","enum","set",29),(4,"string","string","long",9),
-    (1,"string","string","varchar",8),(2,"string","string","varchar",8),
-    (3,"string","string","varchar",8),(4,"string","string","varchar2",8),
-    (1,"string","string","hierarchyid",8),
-    (1,"int","int","int",1),(2,"int","int","integer",1),
-    (3,"int","int","int",1),(4,"int","int","number(10)",1),
-    (3,"int","int","mediumint",1),
-    (2,"long","timestamp-micros","timestamp",12),
-    (3,"long","timestamp-millis","timestamp",12),
-    (4,"long","timestamp-micros","timestamp",12),
-    (2,"string","enum","enum",29),(3,"long","timestamp-micros","datetime(6)",12),
-    (3,"int","int","tinyint",17),(3,"int","int","smallint",18),
-    (3,"string","string","nvarchar",19),(3,"string","uuid","char(36)",14),
-    (4,"bytes","bytes","bfile",13),(1,"bytes","bytes","binary",13),
-    (4,"string","json","json",15),(4,"string","spatial","sdo_geometry",26),
-    (4,"string","uuid","raw(16)",14),(4,"int","int","smallint",18),
-    (1,"bytes","bytes","timestamp",12),(1,"bytes","bytes","varbinary",13),
-    (2,"bytes","bytes","bytea",13),(3,"bytes","bytes","binary",13),
-    (3,"bytes","bytes","blob",13),(4,"bytes","bytes","blob",13),
-    (4,"bytes","bytes","raw",13),(3,"long","timestamp-millis","datetime",22),
-    (3,"string","datetime-offset","varchar(35)",25),
-    (3,"string","spatial","geometry",26),(4,"bytes","bytes","long raw",13),
-    (4,"int","date","date",10),(4,"bytes","bytes","bfile",13),
-    (4,"int","int","number(3)",17),(4,"string","string","nvarchar2",19),
-    (4,"string","string","nchar",20),(4,"string","string","nclob",21),
-    (4,"string","datetime-offset","timestamp with time zone",25),
+    (3,"tinyint(1)","boolean","boolean",6),(1,"datetimeoffset","string","datetime-offset",25),
+    (1,"date","int","date",10),(4,"interval day to second","string","interval",27),
+    (4,"interval year to month","string","interval",27),
+    (2,"date","int","date",10),(3,"date","int","date",10),(3,"year","int","date",10),
+    (1,"time","int","time",11),(1,"json","string","json",15),
+    (2,"time","long","time",11),(3,"time","int","time",11),
+    (1,"xml","string","xml",16),(4,"number(19)","long","long",2),
+    (4,"number","bytes","decimal",3),(4,"binary_float","float","float",4),
+    (4,"binary_double","double","double",5),(4,"number(1)","boolean","boolean",6),
+    (1,"char","string","string",7),(1,"text","string","string",9),
+    (1,"tinyint","int","int",17),(1,"smallint","int","int",18),
+    (1,"nvarchar","string","string",19),(1,"nchar","string","string",20),
+    (1,"ntext","string","string",21),(1,"datetime2","long","timestamp-micros",23),
+    (1,"smalldatetime","long","timestamp-millis",24),
+    (1,"datetimeoffset","string","datetime-offset",25),
+    (1,"money","bytes","decimal",3),(1,"smallmoney","bytes","decimal",3),
+    (2,"char","string","string",7),(2,"text","string","string",9),
+    (3,"char","string","string",7),(3,"text","string","string",9),
+    (4,"char","string","string",7),(4,"clob","string","string",9),
+    (4,"date","long","timestamp-millis",22),
+    (1,"geometry","string","spatial",26),(1,"geography","string","spatial",26),
+    (2,"interval","string","interval",27),(2,"inet","string","network",28),
+    (2,"cidr","string","network",28),(2,"macaddr","string","network",28),
+    (2,"geometry","string","spatial",26),(3,"enum","string","enum",29),
+    (3,"set","string","enum",29),(4,"long","string","string",9),
+    (1,"varchar","string","string",8),(2,"varchar","string","string",8),
+    (3,"varchar","string","string",8),(4,"varchar2","string","string",8),
+    (1,"hierarchyid","string","string",8),
+    (1,"int","int","int",1),(2,"integer","int","int",1),
+    (3,"int","int","int",1),(4,"number(10)","int","int",1),
+    (3,"mediumint","int","int",1),
+    (2,"timestamp","long","timestamp-micros",12),
+    (3,"timestamp","long","timestamp-millis",12),
+    (4,"timestamp","long","timestamp-micros",12),
+    (2,"enum","string","enum",29),(3,"datetime(6)","long","timestamp-micros",12),
+    (3,"tinyint","int","int",17),(3,"smallint","int","int",18),
+    (3,"nvarchar","string","string",19),(3,"char(36)","string","uuid",14),
+    (4,"bfile","bytes","bytes",13),(1,"binary","bytes","bytes",13),
+    (4,"json","string","json",15),(4,"sdo_geometry","string","spatial",26),
+    (4,"raw(16)","string","uuid",14),(4,"smallint","int","int",18),
+    (1,"timestamp","bytes","bytes",12),(1,"varbinary","bytes","bytes",13),
+    (2,"bytea","bytes","bytes",13),(3,"binary","bytes","bytes",13),
+    (3,"blob","bytes","bytes",13),(4,"blob","bytes","bytes",13),
+    (4,"raw","bytes","bytes",13),(3,"datetime","long","timestamp-millis",22),
+    (3,"varchar(35)","string","datetime-offset",25),
+    (3,"geometry","string","spatial",26),(4,"long raw","bytes","bytes",13),
+    (4,"date","int","date",10),(4,"bfile","bytes","bytes",13),
+    (4,"number(3)","int","int",17),(4,"nvarchar2","string","string",19),
+    (4,"nchar","string","string",20),(4,"nclob","string","string",21),
+    (4,"timestamp with time zone","string","datetime-offset",25),
 ]
 
 # datatype_mapping: (db_id, standard_id, final_type)
 FINAL_MAPPINGS = {
-    (1,1):"int",(1,2):"bigint",(1,3):"decimal",(1,4):"real",(1,5):"float",
+    (1,1):"int",
+    (1,2):"bigint",
+    (1,3):"decimal",
+    (1,4):"real",
+    (1,5):"float",
     (1,6):"bit",(1,7):"char",(1,8):"varchar",(1,9):"text",(1,10):"date",
     (1,11):"time",(1,12):"datetime2",(1,13):"varbinary",(1,14):"uniqueidentifier",
     (1,15):"nvarchar(max)",(1,16):"xml",(1,17):"tinyint",(1,18):"smallint",
@@ -141,7 +147,7 @@ def build_mapping_rules():
     """Join raw_mappings + final_mappings → mapping_rules rows"""
     rows = []
     seen = set()
-    for (db_id, raw_type, logical_type, source_type, standard_id) in RAW_MAPPINGS:
+    for (db_id, source_type, raw_type, logical_type, standard_id) in RAW_MAPPINGS:
         src_db      = DB_TYPE.get(db_id, "unknown")
         master_type = DATATYPE_STANDARD.get(standard_id, "")
 
@@ -159,22 +165,23 @@ def build_mapping_rules():
 
             rows.append({
                 "src_db":       src_db,
-                "raw_type":     raw_type,
                 "source_type":  source_type,
+                "raw_type":     raw_type,
                 "logical_type": logical_type,
-                "master_type":  master_type,
+                "standard_type":   master_type,
                 "dest_db":      dest_db_name,
                 "final_type":   final_type,
                 "confidence":   100,
                 "status":       "active",
-                "updated":      "2026-05-19",
+                "updated":      date(2026, 5, 19),
             })
     return rows
 
 
 async def main():
     print("🔌 Connecting to Render DB...")
-    conn = await asyncpg.connect(RENDER_DSN, ssl="require")
+    ssl_mode = None if IS_LOCAL else "require"
+    conn = await asyncpg.connect(RENDER_DSN, ssl=ssl_mode)
 
     # ลบข้อมูลเก่าแล้ว insert ใหม่พร้อม source_type
     print("🗑  Clearing old mapping_rules...")
@@ -195,14 +202,13 @@ async def main():
         try:
             await conn.execute("""
                 INSERT INTO mapping_rules
-                    (src_db, raw_type, source_type, logical_type, master_type,
+                    (src_db, source_type, raw_type, logical_type, master_type,
                      dest_db, final_type, confidence, status, updated)
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
                 ON CONFLICT DO NOTHING
             """,
-                r["src_db"], r["raw_type"], r["source_type"], r["logical_type"],
-                r["master_type"], r["dest_db"], r["final_type"],
-                r["confidence"], r["status"], r["updated"],
+                r["src_db"], r["source_type"], r["raw_type"], r["logical_type"], r["standard_type"],
+                r["dest_db"], r["final_type"], r["confidence"], r["status"], r["updated"],
             )
             inserted += 1
         except Exception as e:
