@@ -802,46 +802,86 @@
       <button class="modal-close" onclick="closeModal('mappingModal')">✕</button>
     </div>
     <div class="modal-body">
-      <div class="form-grid">
+      <!-- Loading/Error state for dropdown options -->
+      <div id="mFormLoadingState" class="hidden" style="text-align:center;padding:24px;color:var(--text3)">
+        <span class="spinner-sm"></span> Loading options…
+      </div>
+      <div id="mFormErrorState" class="hidden" style="padding:12px;border-radius:var(--radius);background:var(--danger-bg,rgba(239,68,68,.1));color:var(--danger,#ef4444);margin-bottom:16px">
+        <span id="mFormErrorText">Failed to load options.</span>
+        <button class="btn btn-sm btn-ghost" style="margin-left:8px" onclick="loadMappingFormOptions()">Retry</button>
+      </div>
+      <div class="form-grid" id="mFormFields">
+        <!-- Source DB — searchable select (populated from API) -->
         <div class="form-field">
-          <label class="form-label">Source DB</label>
-          <select class="form-select" id="mSrcDb">
-            <option>sqlserver</option><option>postgresql</option><option>mysql</option><option>oracle</option>
-          </select>
+          <label class="form-label">Source DB <span style="color:var(--danger,#ef4444)">*</span></label>
+          <div class="searchable-select-wrap">
+            <input type="text" class="form-input" id="mSrcDbSearch" placeholder="Search source DB…" autocomplete="off"
+              oninput="filterSearchableSelect('mSrcDb', this.value)"
+              onblur="commitSearchableSelect('mSrcDb')" />
+            <select class="form-select hidden" id="mSrcDb" size="5" onchange="pickSearchableSelect('mSrcDb')"></select>
+            <input type="hidden" id="mSrcDbVal" />
+          </div>
+          <div class="form-error hidden" id="mSrcDbErr">Source DB is required</div>
         </div>
+        <!-- Destination DB — same datasource -->
         <div class="form-field">
-          <label class="form-label">Destination DB</label>
-          <select class="form-select" id="mDestDb">
-            <option>confluent</option><option>postgresql</option><option>mysql</option>
-          </select>
+          <label class="form-label">Destination DB <span style="color:var(--danger,#ef4444)">*</span></label>
+          <div class="searchable-select-wrap">
+            <input type="text" class="form-input" id="mDestDbSearch" placeholder="Search destination DB…" autocomplete="off"
+              oninput="filterSearchableSelect('mDestDb', this.value)"
+              onblur="commitSearchableSelect('mDestDb')" />
+            <select class="form-select hidden" id="mDestDb" size="5" onchange="pickSearchableSelect('mDestDb')"></select>
+            <input type="hidden" id="mDestDbVal" />
+          </div>
+          <div class="form-error hidden" id="mDestDbErr">Destination DB is required</div>
         </div>
+        <!-- Raw Type — required text -->
         <div class="form-field">
-          <label class="form-label">Raw Type</label>
-          <input type="text" class="form-input" id="mRawType" placeholder="e.g. string" />
+          <label class="form-label">Raw Type <span style="color:var(--danger,#ef4444)">*</span></label>
+          <input type="text" class="form-input" id="mRawType" placeholder="e.g. varchar"
+            oninput="validateMappingField('mRawType')" />
+          <div class="form-error hidden" id="mRawTypeErr">Raw Type is required</div>
         </div>
+        <!-- Logical Type — required text -->
         <div class="form-field">
-          <label class="form-label">Logical Type</label>
-          <input type="text" class="form-input" id="mLogicalType" placeholder="e.g. uuid" />
+          <label class="form-label">Logical Type <span style="color:var(--danger,#ef4444)">*</span></label>
+          <input type="text" class="form-input" id="mLogicalType" placeholder="e.g. uuid"
+            oninput="validateMappingField('mLogicalType')" />
+          <div class="form-error hidden" id="mLogicalTypeErr">Logical Type is required</div>
         </div>
+        <!-- Master Type — searchable select from datatype_standard -->
         <div class="form-field">
-          <label class="form-label">Master Type</label>
-          <input type="text" class="form-input" id="mMasterType" placeholder="e.g. UUID" />
+          <label class="form-label">Master Type <span style="color:var(--danger,#ef4444)">*</span></label>
+          <div class="searchable-select-wrap">
+            <input type="text" class="form-input" id="mMasterTypeSearch" placeholder="Search standard type…" autocomplete="off"
+              oninput="filterSearchableSelect('mMasterType', this.value)"
+              onblur="commitSearchableSelect('mMasterType')" />
+            <select class="form-select hidden" id="mMasterType" size="5" onchange="pickSearchableSelect('mMasterType')"></select>
+            <input type="hidden" id="mMasterTypeVal" />
+          </div>
+          <div class="form-error hidden" id="mMasterTypeErr">Master Type is required</div>
         </div>
+        <!-- Final Type — required text -->
         <div class="form-field">
-          <label class="form-label">Final Type</label>
-          <input type="text" class="form-input" id="mFinalType" placeholder="e.g. VARCHAR(36)" />
+          <label class="form-label">Final Type <span style="color:var(--danger,#ef4444)">*</span></label>
+          <input type="text" class="form-input" id="mFinalType" placeholder="e.g. VARCHAR(36)"
+            oninput="validateMappingField('mFinalType')" />
+          <div class="form-error hidden" id="mFinalTypeErr">Final Type is required</div>
         </div>
         <div class="form-field full">
           <label class="form-label">Status</label>
           <select class="form-select" id="mStatus">
-            <option>active</option><option>draft</option><option>deprecated</option>
+            <option value="pending">pending</option>
+            <option value="active">active</option>
+            <option value="draft">draft</option>
+            <option value="deprecated">deprecated</option>
           </select>
         </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('mappingModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveMapping()">Save Rule</button>
+      <button class="btn btn-primary" id="mSaveBtn" onclick="saveMapping()">Save Rule</button>
     </div>
   </div>
 </div>
@@ -929,12 +969,22 @@
     <div class="modal-body">
       <div class="form-grid">
         <div class="form-field">
-          <label class="form-label">DB Name (internal key)</label>
-          <input type="text" class="form-input" id="dbName" placeholder="e.g. snowflake" />
+          <label class="form-label">
+            DB Key (internal) <span style="color:var(--danger,#ef4444)">*</span>
+          </label>
+          <input type="text" class="form-input" id="dbName" placeholder="e.g. My DB_01"
+            oninput="onDbKeyInput(this)" />
+          <!-- Live preview of sanitized key -->
+          <div id="dbKeyPreview" style="margin-top:4px;font-size:11px;font-family:var(--mono);color:var(--text3);display:none">
+            Will be saved as: <strong id="dbKeyPreviewVal"></strong>
+          </div>
+          <div class="form-error hidden" id="dbNameErr">Key is required and must use only a–z, 0–9, _</div>
         </div>
         <div class="form-field">
-          <label class="form-label">Display Label</label>
-          <input type="text" class="form-input" id="dbLabel" placeholder="e.g. Snowflake" />
+          <label class="form-label">Display Label <span style="color:var(--danger,#ef4444)">*</span></label>
+          <input type="text" class="form-input" id="dbLabel" placeholder="e.g. Snowflake"
+            oninput="validateDbField('dbLabel')" />
+          <div class="form-error hidden" id="dbLabelErr">Display label is required</div>
         </div>
         <div class="form-field">
           <label class="form-label">Version / Edition</label>
@@ -943,7 +993,9 @@
         <div class="form-field">
           <label class="form-label">Status</label>
           <select class="form-select" id="dbStatus">
-            <option>active</option><option>beta</option><option>disabled</option>
+            <option value="active">active</option>
+            <option value="beta">beta</option>
+            <option value="disabled">disabled</option>
           </select>
         </div>
       </div>

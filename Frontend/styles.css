@@ -1521,3 +1521,85 @@ code { font-family: var(--mono); }
 
   .sess-stat-num { font-size: 20px; }
 }
+/* ════════════════════════════════════════════════
+   FORM VALIDATION — เพิ่มเพื่อ refactor
+════════════════════════════════════════════════ */
+
+/* Inline error message under form fields */
+.form-error {
+  font-size: 11px;
+  color: var(--danger, #ef4444);
+  margin-top: 4px;
+  min-height: 16px;
+}
+
+/* Input border states */
+.form-input.input-error,
+.form-select.input-error {
+  border-color: var(--danger, #ef4444) !important;
+  outline: none;
+}
+
+.form-input.input-ok {
+  border-color: var(--success, #22c55e) !important;
+}
+
+/* Searchable select wrapper */
+.searchable-select-wrap {
+  position: relative;
+}
+
+.searchable-select-wrap select {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  border-radius: 0 0 var(--radius) var(--radius);
+  border-top: none;
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  box-shadow: 0 4px 12px rgba(0,0,0,.25);
+}
+
+.searchable-select-wrap select option {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.searchable-select-wrap select option:hover,
+.searchable-select-wrap select option:checked {
+  background: var(--accent, #6366f1);
+  color: #fff;
+}
+
+/* Loading spinner (small inline) */
+.spinner-sm {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent, #6366f1);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Button loading state */
+.btn.btn-loading {
+  opacity: .7;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* Sync status badge */
+.badge-synced  { background: rgba(34,197,94,.15);  color: #22c55e; }
+.badge-pending { background: rgba(234,179,8,.15);   color: #eab308; }
+.badge-error   { background: rgba(239,68,68,.15);   color: #ef4444; }

@@ -426,16 +426,182 @@ function updateBulkBar() {
   if (countEl) countEl.textContent = `${count} selected`;
 }
 
+// ════════════════════════════════════════════════════════════
+//  SEARCHABLE SELECT — reusable helper
+// ════════════════════════════════════════════════════════════
+// Usage pattern:
+//   HTML: input#<id>Search  select#<id>  input[hidden]#<id>Val
+//   Call: filterSearchableSelect(id, query) / commitSearchableSelect(id)
+//         pickSearchableSelect(id) on select.onchange
+
+let _ssOptions = {};  // cache: { mSrcDb: [{value, label}], ... }
+
+function _ssSetup(id, options) {
+  _ssOptions[id] = options;
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  sel.innerHTML = options.map(o =>
+    `<option value="${o.value}">${o.label}</option>`
+  ).join('');
+}
+
+function filterSearchableSelect(id, query) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const q = (query || '').toLowerCase();
+  const opts = (_ssOptions[id] || []).filter(o =>
+    !q || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
+  );
+  sel.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+  if (opts.length > 0) sel.classList.remove('hidden');
+  else sel.classList.add('hidden');
+}
+
+function pickSearchableSelect(id) {
+  const sel   = document.getElementById(id);
+  const input = document.getElementById(id + 'Search');
+  const hidden = document.getElementById(id + 'Val');
+  if (!sel || !sel.value) return;
+  const chosen = (_ssOptions[id] || []).find(o => o.value === sel.value);
+  if (input)  input.value  = chosen ? chosen.label : sel.value;
+  if (hidden) hidden.value = sel.value;
+  sel.classList.add('hidden');
+  clearFieldError(id);
+}
+
+function commitSearchableSelect(id) {
+  // เมื่อ blur ให้ซ่อน dropdown และ validate ว่ามีค่า
+  setTimeout(() => {
+    const sel = document.getElementById(id);
+    if (sel) sel.classList.add('hidden');
+    // ถ้า search text ตรงกับ option ให้เลือกอัตโนมัติ
+    const input  = document.getElementById(id + 'Search');
+    const hidden = document.getElementById(id + 'Val');
+    if (!input || !hidden) return;
+    const q = input.value.trim().toLowerCase();
+    if (!hidden.value && q) {
+      const match = (_ssOptions[id] || []).find(o =>
+        o.label.toLowerCase() === q || o.value.toLowerCase() === q
+      );
+      if (match) {
+        hidden.value = match.value;
+        input.value  = match.label;
+        clearFieldError(id);
+      }
+    }
+  }, 150);
+}
+
+function setSearchableSelectValue(id, value) {
+  const opts   = _ssOptions[id] || [];
+  const match  = opts.find(o => o.value === value);
+  const input  = document.getElementById(id + 'Search');
+  const hidden = document.getElementById(id + 'Val');
+  if (input)  input.value  = match ? match.label : value;
+  if (hidden) hidden.value = value;
+}
+
+function getSearchableSelectValue(id) {
+  const hidden = document.getElementById(id + 'Val');
+  return hidden ? hidden.value.trim() : '';
+}
+
+// ════════════════════════════════════════════════════════════
+//  MAPPING FORM — load dropdown options from API
+// ════════════════════════════════════════════════════════════
+
+let _mappingFormOptionsLoaded = false;
+
+async function loadMappingFormOptions(force = false) {
+  if (_mappingFormOptionsLoaded && !force) return;
+  const loadingEl  = document.getElementById('mFormLoadingState');
+  const errorEl    = document.getElementById('mFormErrorState');
+  const fieldsEl   = document.getElementById('mFormFields');
+  if (loadingEl) loadingEl.classList.remove('hidden');
+  if (errorEl)   errorEl.classList.add('hidden');
+  if (fieldsEl)  fieldsEl.style.opacity = '0.4';
+  try {
+    const [dbRes, typeRes] = await Promise.all([
+      apiCall('/api/database-records/enabled?limit=200'),
+      apiCall('/api/datatype-standard/list?limit=200'),
+    ]);
+    const dbOptions   = (dbRes.data   || []).map(d => ({ value: d.key,           label: d.key }));
+    const typeOptions = (typeRes.data || []).map(t => ({ value: t.standard_type, label: t.standard_type }));
+    _ssSetup('mSrcDb',      dbOptions);
+    _ssSetup('mDestDb',     dbOptions);
+    _ssSetup('mMasterType', typeOptions);
+    _mappingFormOptionsLoaded = true;
+  } catch (e) {
+    if (errorEl) {
+      errorEl.classList.remove('hidden');
+      const errText = document.getElementById('mFormErrorText');
+      if (errText) errText.textContent = 'Failed to load options: ' + e.message;
+    }
+  } finally {
+    if (loadingEl) loadingEl.classList.add('hidden');
+    if (fieldsEl)  fieldsEl.style.opacity = '';
+  }
+}
+
+// ── Validation helpers ────────────────────────────────────────────────────────
+
+function setFieldError(id, msg) {
+  const input = document.getElementById(id) || document.getElementById(id + 'Search');
+  const errEl = document.getElementById(id + 'Err');
+  if (input) input.classList.add('input-error');
+  if (errEl) { errEl.textContent = msg || ''; errEl.classList.remove('hidden'); }
+}
+
+function clearFieldError(id) {
+  const input = document.getElementById(id) || document.getElementById(id + 'Search');
+  const errEl = document.getElementById(id + 'Err');
+  if (input) { input.classList.remove('input-error'); input.classList.add('input-ok'); }
+  if (errEl) errEl.classList.add('hidden');
+}
+
+function validateMappingField(id) {
+  const el  = document.getElementById(id);
+  const val = el ? el.value.trim() : '';
+  if (!val) setFieldError(id, el?.placeholder ? `${id} is required` : 'This field is required');
+  else      clearFieldError(id);
+  return !!val;
+}
+
+function _validateMappingForm() {
+  let ok = true;
+  const srcDb  = getSearchableSelectValue('mSrcDb');
+  const destDb = getSearchableSelectValue('mDestDb');
+  const master = getSearchableSelectValue('mMasterType');
+  if (!srcDb)  { setFieldError('mSrcDb',      'Source DB is required');  ok = false; }
+  else           clearFieldError('mSrcDb');
+  if (!destDb) { setFieldError('mDestDb',     'Destination DB is required'); ok = false; }
+  else           clearFieldError('mDestDb');
+  if (!master) { setFieldError('mMasterType', 'Master Type is required'); ok = false; }
+  else           clearFieldError('mMasterType');
+  ['mRawType', 'mLogicalType', 'mFinalType'].forEach(id => {
+    if (!validateMappingField(id)) ok = false;
+  });
+  return ok;
+}
+
 function editMapping(id) {
   const m = mappingData.find(r => r.id === id);
   if (!m) return;
-  document.getElementById('mSrcDb').value       = m.srcDb;
-  document.getElementById('mDestDb').value      = m.destDb;
-  document.getElementById('mRawType').value     = m.rawType;
-  document.getElementById('mLogicalType').value = m.logicalType;
-  document.getElementById('mMasterType').value  = m.masterType;
-  document.getElementById('mFinalType').value   = m.finalType;
-  document.getElementById('mStatus').value      = m.status;
+  loadMappingFormOptions().then(() => {
+    setSearchableSelectValue('mSrcDb',      m.srcDb);
+    setSearchableSelectValue('mDestDb',     m.destDb);
+    setSearchableSelectValue('mMasterType', m.masterType);
+    const rawTypeEl      = document.getElementById('mRawType');
+    const logicalTypeEl  = document.getElementById('mLogicalType');
+    const finalTypeEl    = document.getElementById('mFinalType');
+    const statusEl       = document.getElementById('mStatus');
+    if (rawTypeEl)     rawTypeEl.value     = m.rawType;
+    if (logicalTypeEl) logicalTypeEl.value = m.logicalType;
+    if (finalTypeEl)   finalTypeEl.value   = m.finalType;
+    if (statusEl)      statusEl.value      = m.status;
+    ['mSrcDb', 'mDestDb', 'mMasterType', 'mRawType', 'mLogicalType', 'mFinalType']
+      .forEach(clearFieldError);
+  });
   document.getElementById('mappingModalTitle').textContent = 'Edit Mapping Rule';
   document.getElementById('mappingModal').dataset.editId = id;
   openModal('mappingModal');
@@ -473,32 +639,66 @@ function bulkApprove() {
 
 function openAddMapping() {
   document.getElementById('mappingModalTitle').textContent = 'Add Mapping Rule';
-  ['mSrcDb','mDestDb','mRawType','mLogicalType','mMasterType','mFinalType'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  // Reset searchable selects
+  ['mSrcDb', 'mDestDb', 'mMasterType'].forEach(id => {
+    const inp = document.getElementById(id + 'Search');
+    const hid = document.getElementById(id + 'Val');
+    if (inp) inp.value = '';
+    if (hid) hid.value = '';
+    clearFieldError(id);
+  });
+  // Reset text inputs
+  ['mRawType', 'mLogicalType', 'mFinalType'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; el.classList.remove('input-error', 'input-ok'); }
+    clearFieldError(id);
+  });
+  const statusEl = document.getElementById('mStatus');
+  if (statusEl) statusEl.value = 'pending';
   delete document.getElementById('mappingModal').dataset.editId;
+  loadMappingFormOptions();
   openModal('mappingModal');
 }
 
 async function saveMapping() {
-  const raw = document.getElementById('mRawType')?.value.trim();
-  if (!raw) { showToast('Raw Type is required', 'error'); return; }
+  if (!_validateMappingForm()) {
+    showToast('Please fix the errors before saving', 'error');
+    return;
+  }
+  const saveBtn = document.getElementById('mSaveBtn');
+  if (saveBtn) { saveBtn.classList.add('btn-loading'); saveBtn.textContent = 'Saving…'; }
   const payload = {
-    src_db:       document.getElementById('mSrcDb')?.value || 'sqlserver',
-    raw_type:     raw,
-    logical_type: document.getElementById('mLogicalType')?.value.trim() || '',
-    master_type:  document.getElementById('mMasterType')?.value.trim() || '',
-    dest_db:      document.getElementById('mDestDb')?.value || 'confluent',
-    final_type:   document.getElementById('mFinalType')?.value.trim() || '',
+    src_db:       getSearchableSelectValue('mSrcDb'),
+    raw_type:     document.getElementById('mRawType').value.trim(),
+    logical_type: document.getElementById('mLogicalType').value.trim(),
+    master_type:  getSearchableSelectValue('mMasterType'),
+    dest_db:      getSearchableSelectValue('mDestDb'),
+    final_type:   document.getElementById('mFinalType').value.trim(),
     confidence:   100,
-    status:       document.getElementById('mStatus')?.value || 'draft',
+    status:       document.getElementById('mStatus')?.value || 'pending',
   };
   const editId = document.getElementById('mappingModal').dataset.editId;
   try {
-    if (editId) { await apiCall(`/api/mappings/${editId}`, { method:'PUT', body:JSON.stringify(payload) }); showToast('Mapping rule updated', 'success'); }
-    else        { await apiCall('/api/mappings', { method:'POST', body:JSON.stringify(payload) }); showToast('Mapping rule saved', 'success'); }
+    if (editId) {
+      await apiCall(`/api/mappings/${editId}`, { method: 'PUT', body: JSON.stringify(payload) });
+      showToast('Mapping rule updated', 'success');
+    } else {
+      await apiCall('/api/mappings', { method: 'POST', body: JSON.stringify(payload) });
+      showToast('Mapping rule saved', 'success');
+    }
     closeModal('mappingModal');
     await fetchMappings();
-  } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+  } catch (e) {
+    // structured error from backend
+    let msg = e.message;
+    try { const parsed = JSON.parse(e.message); msg = parsed.message || msg; } catch {}
+    showToast('Save failed: ' + msg, 'error');
+  } finally {
+    if (saveBtn) { saveBtn.classList.remove('btn-loading'); saveBtn.textContent = 'Save Rule'; }
+  }
 }
+
+
 
 // Bulk Import — ซ่อนจน implement จริง
 function openBulkImport() { showToast('Bulk import coming soon', 'info'); }
@@ -580,12 +780,25 @@ async function toggleDatabase(id, enabled) {
 function editDatabase(id) {
   const db = dbData.find(d => d.id === id);
   if (!db) return;
+  ['dbName','dbLabel','dbVersion'].forEach(fid => {
+    const el = document.getElementById(fid);
+    if (el) el.classList.remove('input-error', 'input-ok');
+  });
+  ['dbNameErr','dbLabelErr'].forEach(fid => {
+    const el = document.getElementById(fid);
+    if (el) el.classList.add('hidden');
+  });
+  const preview = document.getElementById('dbKeyPreview');
+  if (preview) preview.style.display = 'none';
   document.getElementById('dbName').value    = db.key;
   document.getElementById('dbLabel').value   = db.name;
   document.getElementById('dbVersion').value = db.version || '';
   document.getElementById('dbStatus').value  = db.status || 'active';
   document.getElementById('dbModalTitle').textContent = 'Edit Database';
   document.getElementById('dbModal').dataset.editId = id;
+  // Update save button text for edit mode
+  const saveBtn = document.querySelector('#dbModal .btn-primary');
+  if (saveBtn) saveBtn.textContent = 'Save Changes';
   openModal('dbModal');
 }
 
@@ -600,26 +813,117 @@ function confirmDeleteDatabase(id) {
   openModal('deleteModal');
 }
 
+// ════════════════════════════════════════════════════════════
+//  DATABASE KEY SANITIZE (mirrors backend logic)
+// ════════════════════════════════════════════════════════════
+function sanitizeDbKey(raw) {
+  return (raw || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+const _DB_KEY_RE = /^[a-z0-9_]+$/;
+
+function onDbKeyInput(input) {
+  const raw       = input.value;
+  const sanitized = sanitizeDbKey(raw);
+  // Show live preview
+  const preview    = document.getElementById('dbKeyPreview');
+  const previewVal = document.getElementById('dbKeyPreviewVal');
+  if (sanitized && sanitized !== raw.trim().toLowerCase()) {
+    if (preview)    preview.style.display = '';
+    if (previewVal) previewVal.textContent = sanitized;
+  } else {
+    if (preview) preview.style.display = 'none';
+  }
+  // Validate
+  const errEl = document.getElementById('dbNameErr');
+  if (!sanitized) {
+    input.classList.add('input-error');
+    input.classList.remove('input-ok');
+    if (errEl) errEl.classList.remove('hidden');
+  } else if (!_DB_KEY_RE.test(sanitized)) {
+    input.classList.add('input-error');
+    input.classList.remove('input-ok');
+    if (errEl) { errEl.textContent = 'Only a–z, 0–9, _ allowed'; errEl.classList.remove('hidden'); }
+  } else {
+    input.classList.remove('input-error');
+    input.classList.add('input-ok');
+    if (errEl) errEl.classList.add('hidden');
+  }
+}
+
+function validateDbField(id) {
+  const el  = document.getElementById(id);
+  const errEl = document.getElementById(id + 'Err');
+  const val = el ? el.value.trim() : '';
+  if (!val) {
+    if (el) { el.classList.add('input-error'); el.classList.remove('input-ok'); }
+    if (errEl) errEl.classList.remove('hidden');
+    return false;
+  }
+  if (el) { el.classList.remove('input-error'); el.classList.add('input-ok'); }
+  if (errEl) errEl.classList.add('hidden');
+  return true;
+}
+
 function openAddDatabase() {
-  ['dbName','dbLabel','dbVersion'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['dbName','dbLabel','dbVersion'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; el.classList.remove('input-error', 'input-ok'); }
+  });
+  ['dbNameErr','dbLabelErr'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+  const preview = document.getElementById('dbKeyPreview');
+  if (preview) preview.style.display = 'none';
   document.getElementById('dbModalTitle').textContent = 'Add Database';
   delete document.getElementById('dbModal').dataset.editId;
   openModal('dbModal');
 }
 
 async function saveDatabase() {
+  const rawKey  = document.getElementById('dbName')?.value || '';
+  const key     = sanitizeDbKey(rawKey);
   const name    = document.getElementById('dbLabel')?.value.trim();
-  const key     = document.getElementById('dbName')?.value.trim();
   const version = document.getElementById('dbVersion')?.value.trim();
   const status  = document.getElementById('dbStatus')?.value || 'active';
-  if (!name || !key) { showToast('Name and Key are required', 'error'); return; }
+
+  let ok = true;
+  if (!key || !_DB_KEY_RE.test(key)) {
+    const errEl = document.getElementById('dbNameErr');
+    const input = document.getElementById('dbName');
+    if (input) input.classList.add('input-error');
+    if (errEl) { errEl.textContent = 'Key must use only a–z, 0–9, _'; errEl.classList.remove('hidden'); }
+    ok = false;
+  }
+  if (!validateDbField('dbLabel')) ok = false;
+  if (!ok) { showToast('Please fix the errors before saving', 'error'); return; }
+
+  const saveBtn = document.querySelector('#dbModal .btn-primary');
+  if (saveBtn) { saveBtn.classList.add('btn-loading'); saveBtn.textContent = 'Saving…'; }
   const editId = document.getElementById('dbModal').dataset.editId;
   try {
-    if (editId) { await apiCall(`/api/databases/${editId}`, { method:'PUT', body:JSON.stringify({ name, key, version, status }) }); showToast(`Database "${name}" updated`, 'success'); }
-    else        { await apiCall('/api/databases', { method:'POST', body:JSON.stringify({ name, key, version, status, enabled:true }) }); showToast(`Database "${name}" added`, 'success'); }
-    closeModal('dbModal'); await fetchDatabases();
-  } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+    if (editId) {
+      await apiCall(`/api/databases/${editId}`, { method:'PUT', body:JSON.stringify({ name, key, version, status }) });
+      showToast(`Database "${name}" updated`, 'success');
+    } else {
+      await apiCall('/api/databases', { method:'POST', body:JSON.stringify({ name, key, version, status, enabled:true }) });
+      showToast(`Database "${name}" added`, 'success');
+    }
+    closeModal('dbModal');
+    await fetchDatabases();
+    // refresh mapping form options cache
+    _mappingFormOptionsLoaded = false;
+  } catch (e) {
+    let msg = e.message;
+    try { const d = JSON.parse(e.message); msg = d.message || msg; } catch {}
+    showToast('Save failed: ' + msg, 'error');
+  } finally {
+    if (saveBtn) { saveBtn.classList.remove('btn-loading'); saveBtn.textContent = 'Add Database'; }
+  }
 }
+
+
 
 // ════════════════════════════════════════════════════════════
 //  SESSION MONITOR
@@ -871,6 +1175,28 @@ if (globalSearch) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); globalSearch.focus(); globalSearch.select(); }
     if (e.key === 'Escape') globalSearch.blur();
   });
+}
+
+// ════════════════════════════════════════════════════════════
+//  SYNC ENGINE TRIGGER
+// ════════════════════════════════════════════════════════════
+
+async function triggerSync() {
+  const btn = document.getElementById('syncBtn');
+  if (btn) { btn.classList.add('btn-loading'); btn.textContent = '⟳ Syncing…'; }
+  try {
+    const res = await apiCall('/api/sync/run', { method: 'POST' });
+    const m   = res.data || {};
+    showToast(
+      `Sync complete — ${m.synced ?? 0} synced, ${m.errors ?? 0} error(s)`,
+      (m.errors ?? 0) > 0 ? 'warn' : 'success',
+    );
+    await fetchMappings();
+  } catch (e) {
+    showToast('Sync failed: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.classList.remove('btn-loading'); btn.textContent = '⟳ Sync Pending'; }
+  }
 }
 
 // ════════════════════════════════════════════════════════════
