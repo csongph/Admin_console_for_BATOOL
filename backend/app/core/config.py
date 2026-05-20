@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         "null",
         "https://ba-tool-for-multiple-db.vercel.app",
     ]
-    ALLOWED_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
+    ALLOWED_ORIGIN_REGEX: Optional[str] = r"(https://.*\.vercel\.app|http://(localhost|127\.0\.0\.1)(:\d+)?)"
 
     class Config:
         env_file = ".env"

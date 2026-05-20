@@ -4,7 +4,15 @@
 
 'use strict';
 
-const DEFAULT_API_URL = 'http://localhost:8000';
+function getDefaultApiUrl() {
+  const host = window.location.hostname;
+  if (host === '127.0.0.1' || host === 'localhost') {
+    return `${window.location.protocol}//${host}:8000`;
+  }
+  return 'http://localhost:8000';
+}
+
+const DEFAULT_API_URL = getDefaultApiUrl();
 const API_URL = (
   window.BA_API_URL ||
   window.API_URL ||
