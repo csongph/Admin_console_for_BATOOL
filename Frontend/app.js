@@ -4,7 +4,13 @@
 
 'use strict';
 
-const API_URL = 'http://localhost:8000';
+const DEFAULT_API_URL = 'http://localhost:8000';
+const API_URL = (
+  window.BA_API_URL ||
+  window.API_URL ||
+  localStorage.getItem('ba_api_url') ||
+  DEFAULT_API_URL
+).replace(/\/$/, '');
 
 // ════════════════════════════════════════════════════════════
 //  API + TOKEN REFRESH
@@ -500,7 +506,11 @@ async function fetchDatabases() {
     const data = await apiCall('/api/databases');
     dbData = data.data || [];
     renderDatabases();
-  } catch (e) { showToast('Failed to load databases: ' + e.message, 'error'); }
+  } catch (e) {
+    dbData = [];
+    renderDatabaseError(e);
+    showToast('Failed to load databases: ' + e.message, 'error');
+  }
 }
 
 function renderDatabases() {
@@ -529,6 +539,18 @@ function renderDatabases() {
       </div>
     </div>`;
   }).join('');
+}
+
+function renderDatabaseError(error) {
+  const grid = document.getElementById('dbGrid');
+  if (!grid) return;
+  const detail = error?.message || 'Unknown error';
+  grid.innerHTML = `
+    <div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);border:1px dashed var(--border2);border-radius:var(--radius);">
+      <div style="font-weight:600;color:var(--text);margin-bottom:8px">Unable to load databases</div>
+      <div style="margin-bottom:16px">${detail}</div>
+      <button class="btn btn-primary" onclick="fetchDatabases()">Retry</button>
+    </div>`;
 }
 
 async function toggleDatabase(id, enabled) {

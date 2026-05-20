@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -22,6 +22,7 @@ class Settings(BaseSettings):
         "null",
         "https://ba-tool-for-multiple-db.vercel.app",
     ]
+    ALLOWED_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
 
     class Config:
         env_file = ".env"
