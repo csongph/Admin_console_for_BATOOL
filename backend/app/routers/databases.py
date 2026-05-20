@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.schemas import APIResponse
@@ -51,20 +51,19 @@ async def _seed_defaults(db: AsyncSession):
 
 
 async def _count_rules(db: AsyncSession, key: str) -> int:
-    from sqlalchemy import func
     result = await db.execute(
-        select(MappingRule).where(
+        select(func.count()).select_from(MappingRule).where(
             (MappingRule.src_db == key) | (MappingRule.dest_db == key)
         )
     )
-    return len(result.scalars().all())
+    return result.scalar_one()
 
 
 async def _count_sessions(db: AsyncSession, key: str) -> int:
     result = await db.execute(
-        select(SessionRecord).where(SessionRecord.db == key)
+        select(func.count()).select_from(SessionRecord).where(SessionRecord.db == key)
     )
-    return len(result.scalars().all())
+    return result.scalar_one()
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────

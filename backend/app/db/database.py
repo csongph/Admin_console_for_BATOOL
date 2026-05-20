@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import text
 from typing import AsyncGenerator
 
 from app.core.config import settings
@@ -43,3 +44,7 @@ async def init_db():
     """สร้าง table ทั้งหมดถ้ายังไม่มี"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(
+            "ALTER TABLE session_records "
+            "ADD COLUMN IF NOT EXISTS status_cache VARCHAR(16) DEFAULT 'active'"
+        ))

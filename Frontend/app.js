@@ -56,13 +56,19 @@ async function _refreshToken() {
 
 async function apiCall(path, options = {}) {
   const token = _getToken();
-  const res = await fetch(API_URL + path, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...options,
-  });
+  let res;
+  try {
+    res = await fetch(API_URL + path, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    throw new Error(`${error.message} (${API_URL + path})`);
+  }
   const data = await res.json();
 
   if (res.status === 401) {
@@ -237,9 +243,8 @@ document.addEventListener('keydown', e => {
 async function refreshDashboard() {
   try {
     const start = Date.now();
-    const [health, systemStatus, dbsRes, mappingsRes, sessionsRes, logsRes] = await Promise.allSettled([
+    const [health, dbsRes, mappingsRes, sessionsRes, logsRes] = await Promise.allSettled([
       apiCall('/api/health'),
-      apiCall('/api/system/status'),
       apiCall('/api/databases'),
       apiCall('/api/mappings'),
       apiCall('/api/sessions'),
@@ -257,9 +262,8 @@ async function refreshDashboard() {
 
     const statusDot   = document.querySelector('.status-dot');
     const statusLabel = document.querySelector('.status-label');
-    const isRunning   = systemStatus.status === 'fulfilled' && systemStatus.value?.data?.status === 'running';
-    if (statusDot)   statusDot.className    = `status-dot ${isRunning ? 'online' : 'offline'}`;
-    if (statusLabel) statusLabel.textContent = isRunning ? 'System Online' : 'System Stopped';
+    if (statusDot)   statusDot.className    = `status-dot ${healthOk ? 'online' : 'offline'}`;
+    if (statusLabel) statusLabel.textContent = healthOk ? 'System Online' : 'System Offline';
 
     const metrics    = document.querySelectorAll('.metric-card');
     const dbList     = dbsRes.status     === 'fulfilled' ? (dbsRes.value?.data     || []) : [];
@@ -553,10 +557,15 @@ function renderDatabaseError(error) {
   const grid = document.getElementById('dbGrid');
   if (!grid) return;
   const detail = error?.message || 'Unknown error';
+  const pageOrigin = window.location.origin || 'file://';
   grid.innerHTML = `
     <div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);border:1px dashed var(--border2);border-radius:var(--radius);">
       <div style="font-weight:600;color:var(--text);margin-bottom:8px">Unable to load databases</div>
       <div style="margin-bottom:16px">${detail}</div>
+      <div style="font-family:var(--mono);font-size:11px;line-height:1.6;margin-bottom:16px;color:var(--text3)">
+        API: ${API_URL}<br />
+        Page: ${pageOrigin}
+      </div>
       <button class="btn btn-primary" onclick="fetchDatabases()">Retry</button>
     </div>`;
 }
@@ -685,7 +694,11 @@ async function fetchSessions() {
     const payload = data.data || {};
     sessionData   = payload.sessions || [];
     const stats   = payload.stats    || { active:0, warning:0, expired:0 };
+    const elActive   = document.getElementById('sessActive');
+    const elExpiring = document.getElementById('sessExpiring');
     const elExpired = document.getElementById('sessExpired');
+    if (elActive)   elActive.textContent = stats.active;
+    if (elExpiring) elExpiring.textContent = stats.warning;
     if (elExpired) elExpired.textContent = stats.expired;
     const liveBadge = document.querySelector('.nav-item[data-page="sessions"] .nav-badge.live');
     if (liveBadge) liveBadge.textContent = stats.active + stats.warning;

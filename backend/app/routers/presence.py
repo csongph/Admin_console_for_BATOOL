@@ -140,13 +140,23 @@ async def admin_presence(
 ):
     # ตรวจ token ก่อน accept — ถ้า invalid ปิดทันที
     try:
-        _verify_token(token)
+        username = _verify_token(token)
     except HTTPException:
         await ws.close(code=4001)
         return
 
     await ws.accept()
     admin_connections.add(ws)
+    client_id = f"admin-{uuid.uuid4()}"
+    now = datetime.now(timezone.utc)
+    online_users[client_id] = {
+        "client_id":    client_id,
+        "user_id":      username,
+        "page":         "admin-console",
+        "user_agent":   "Admin Console",
+        "connected_at": now.isoformat(),
+        "last_ping":    now.timestamp(),
+    }
 
     # ส่ง snapshot ปัจจุบันทันทีหลัง connect
     await ws.send_text(json.dumps({
@@ -159,11 +169,17 @@ async def admin_presence(
         while True:
             raw = await ws.receive_text()
             if json.loads(raw).get("event") == "ping":
+                online_users[client_id]["last_ping"] = datetime.now(timezone.utc).timestamp()
                 await ws.send_text(json.dumps({"event": "pong"}))
     except (WebSocketDisconnect, Exception):
         pass
     finally:
+        online_users.pop(client_id, None)
         admin_connections.discard(ws)
+        await _broadcast_to_admins(
+            "update_online_users",
+            {"users": _serialize_users(), "total": len(online_users)},
+        )
 
 
 # ── REST snapshot ─────────────────────────────────────────────────────────────
