@@ -4,8 +4,13 @@ from typing import AsyncGenerator
 
 from app.core.config import settings
 
-# แปลง postgresql:// → postgresql+asyncpg://
-_url = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+# อ่าน URL จาก settings เท่านั้น — ห้าม hardcode ใน code
+_url = settings.DATABASE_URL
+if _url.startswith("postgresql://"):
+    _url = _url.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif _url.startswith("postgres://"):
+    # Render บางครั้งให้ URL แบบ postgres:// มา
+    _url = _url.replace("postgres://", "postgresql+asyncpg://", 1)
 
 engine = create_async_engine(
     _url,

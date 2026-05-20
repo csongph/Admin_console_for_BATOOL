@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-from sqlalchemy import select, delete
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.schemas import APIResponse
@@ -47,11 +48,11 @@ def _today() -> str:
 
 @router.get("/mappings", response_model=APIResponse)
 async def get_mappings(
-    src_db:  Optional[str] = None,
-    dest_db: Optional[str] = None,
-    status:  Optional[str] = None,
-    db:      AsyncSession  = Depends(get_db),
-    current_user: dict     = Depends(get_current_user),
+    src_db:       Optional[str] = None,
+    dest_db:      Optional[str] = None,
+    status:       Optional[str] = None,
+    db:           AsyncSession  = Depends(get_db),
+    current_user: dict          = Depends(get_current_user),
 ):
     q = select(MappingRule)
     if src_db:  q = q.where(MappingRule.src_db  == src_db)
@@ -74,8 +75,15 @@ async def create_mapping(
 ):
     record = MappingRule(**body.dict(), updated=_today())
     db.add(record)
-    await db.commit()
-    await db.refresh(record)
+    try:
+        await db.commit()
+        await db.refresh(record)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Mapping '{body.raw_type}' from '{body.src_db}' → '{body.dest_db}' already exists",
+        )
     return APIResponse(success=True, message="Mapping rule created", data=record.to_dict())
 
 
@@ -90,11 +98,18 @@ async def update_mapping(
     record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Mapping rule not found")
+
     for field, value in body.dict(exclude_none=True).items():
         setattr(record, field, value)
     record.updated = _today()
-    await db.commit()
-    await db.refresh(record)
+
+    try:
+        await db.commit()
+        await db.refresh(record)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Updated values conflict with an existing mapping rule")
+
     return APIResponse(success=True, message="Mapping rule updated", data=record.to_dict())
 
 

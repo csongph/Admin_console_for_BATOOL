@@ -1,16 +1,19 @@
-import bcrypt
 from datetime import timedelta
 from app.core.config import settings
-from app.core.security import create_access_token
+from app.core.security import create_access_token, verify_password, get_password_hash
 
-_RAW_USERS = {"admin": "admin123"}
+# ── ใช้ bcrypt hash จริง — ห้าม hardcode plain text ──────────────────────────
+# สร้าง hash ใหม่ได้ด้วย: python -c "from app.core.security import get_password_hash; print(get_password_hash('YOUR_PASSWORD'))"
+_HASHED_USERS: dict[str, str] = {
+    "admin": get_password_hash("admin123"),  # เปลี่ยน password ก่อน production
+}
 
 
 def authenticate_user(username: str, password: str) -> bool:
-    raw = _RAW_USERS.get(username)
-    if not raw:
+    hashed = _HASHED_USERS.get(username)
+    if not hashed:
         return False
-    return password == raw  # dev mode: plain compare
+    return verify_password(password, hashed)
 
 
 def generate_token(username: str) -> dict:

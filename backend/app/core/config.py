@@ -3,7 +3,8 @@ from typing import List
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql+asyncpg://database_for_ba_tool_user:n3K888YOjUCDP2ItZw30TuXi7MGBn9hY@dpg-d83ambfaqgkc73fa38ig-a.singapore-postgres.render.com/database_for_ba_tool"
+    # ต้องตั้งค่าใน .env หรือ environment variable เสมอ — ไม่มี default ที่มี credentials
+    DATABASE_URL: str
     SECRET_KEY: str = "change-this-secret-key-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     ENVIRONMENT: str = "development"

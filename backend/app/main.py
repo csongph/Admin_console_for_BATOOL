@@ -19,16 +19,18 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="BA Tool API",
     version="1.0.0",
+    # ซ่อน docs ใน production
     docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
     redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
 )
 
+# ── CORS: ใช้ whitelist จาก settings — ไม่เปิด * ──────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.add_middleware(LoggingMiddleware)
@@ -45,6 +47,7 @@ async def on_startup():
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    # ใน production ไม่แสดง error detail ให้ client เห็น
     message = str(exc) if settings.ENVIRONMENT != "production" else "Internal server error"
     return JSONResponse(
         status_code=500,
