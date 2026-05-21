@@ -669,7 +669,6 @@
         <div class="sess-stat"><span class="sess-stat-num muted" id=sessExpired>0</span><span class="sess-stat-label">Expired Today</span></div>
       </div>
 
-      <!-- ── Online Users (real-time WebSocket) ─────────────────── -->
       <div class="table-card" style="margin-bottom:24px">
         <div class="table-header">
           <div>
@@ -695,7 +694,6 @@
         </div>
       </div>
 
-      <!-- ── Active Sessions ───────────────────────────────────── -->
       <div class="table-card">
         <div class="table-header">
           <h2 class="table-title">Active Sessions</h2>
@@ -745,8 +743,7 @@
         </div>
       </div>
 
-      <div class="log-terminal" id="logTerminal">
-         </div>
+      <div class="log-terminal" id="logTerminal"></div>
     </div>
 
     <div class="page hidden" id="page-settings">
@@ -787,7 +784,7 @@
                 </div>
               </div>
             </div>
-            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -795,6 +792,11 @@
   </main>
 </div>
 
+<!-- ══════════════════════════════════════════════════════
+     MAPPING MODAL — fields เรียงตาม DB schema:
+     src_db → source_type → raw_type → logical_type →
+     master_type → dest_db → final_type → confidence → status
+══════════════════════════════════════════════════════ -->
 <div class="modal-overlay hidden" id="mappingModal">
   <div class="modal">
     <div class="modal-header">
@@ -802,7 +804,6 @@
       <button class="modal-close" onclick="closeModal('mappingModal')">✕</button>
     </div>
     <div class="modal-body">
-      <!-- Loading/Error state for dropdown options -->
       <div id="mFormLoadingState" class="hidden" style="text-align:center;padding:24px;color:var(--text3)">
         <span class="spinner-sm"></span> Loading options…
       </div>
@@ -811,7 +812,8 @@
         <button class="btn btn-sm btn-ghost" style="margin-left:8px" onclick="loadMappingFormOptions()">Retry</button>
       </div>
       <div class="form-grid" id="mFormFields">
-        <!-- Source DB — searchable select (populated from API) -->
+
+        <!-- Row 1: Source DB + Source Type -->
         <div class="form-field">
           <label class="form-label">Source DB <span style="color:var(--danger,#ef4444)">*</span></label>
           <div class="searchable-select-wrap">
@@ -823,33 +825,30 @@
           </div>
           <div class="form-error hidden" id="mSrcDbErr">Source DB is required</div>
         </div>
-        <!-- Destination DB — same datasource -->
+
         <div class="form-field">
-          <label class="form-label">Destination DB <span style="color:var(--danger,#ef4444)">*</span></label>
-          <div class="searchable-select-wrap">
-            <input type="text" class="form-input" id="mDestDbSearch" placeholder="Search destination DB…" autocomplete="off"
-              oninput="filterSearchableSelect('mDestDb', this.value)"
-              onblur="commitSearchableSelect('mDestDb')" />
-            <select class="form-select hidden" id="mDestDb" size="5" onchange="pickSearchableSelect('mDestDb')"></select>
-            <input type="hidden" id="mDestDbVal" />
-          </div>
-          <div class="form-error hidden" id="mDestDbErr">Destination DB is required</div>
+          <label class="form-label">Source Type <span style="color:var(--danger,#ef4444)">*</span></label>
+          <input type="text" class="form-input" id="mSourceType" placeholder="e.g. int, long, string…"
+            oninput="validateMappingField('mSourceType')" />
+          <div class="form-error hidden" id="mSourceTypeErr">Source Type is required</div>
         </div>
-        <!-- Raw Type — required text -->
+
+        <!-- Row 2: Raw Type + Logical Type -->
         <div class="form-field">
           <label class="form-label">Raw Type <span style="color:var(--danger,#ef4444)">*</span></label>
-          <input type="text" class="form-input" id="mRawType" placeholder="e.g. varchar"
+          <input type="text" class="form-input" id="mRawType" placeholder="e.g. varchar, jsonb…"
             oninput="validateMappingField('mRawType')" />
           <div class="form-error hidden" id="mRawTypeErr">Raw Type is required</div>
         </div>
-        <!-- Logical Type — required text -->
+
         <div class="form-field">
           <label class="form-label">Logical Type <span style="color:var(--danger,#ef4444)">*</span></label>
-          <input type="text" class="form-input" id="mLogicalType" placeholder="e.g. uuid"
+          <input type="text" class="form-input" id="mLogicalType" placeholder="e.g. uuid, decimal…"
             oninput="validateMappingField('mLogicalType')" />
           <div class="form-error hidden" id="mLogicalTypeErr">Logical Type is required</div>
         </div>
-        <!-- Master Type — searchable select from datatype_standard -->
+
+        <!-- Row 3: Master Type + Dest DB -->
         <div class="form-field">
           <label class="form-label">Master Type <span style="color:var(--danger,#ef4444)">*</span></label>
           <div class="searchable-select-wrap">
@@ -861,13 +860,34 @@
           </div>
           <div class="form-error hidden" id="mMasterTypeErr">Master Type is required</div>
         </div>
-        <!-- Final Type — required text -->
+
+        <div class="form-field">
+          <label class="form-label">Destination DB <span style="color:var(--danger,#ef4444)">*</span></label>
+          <div class="searchable-select-wrap">
+            <input type="text" class="form-input" id="mDestDbSearch" placeholder="Search destination DB…" autocomplete="off"
+              oninput="filterSearchableSelect('mDestDb', this.value)"
+              onblur="commitSearchableSelect('mDestDb')" />
+            <select class="form-select hidden" id="mDestDb" size="5" onchange="pickSearchableSelect('mDestDb')"></select>
+            <input type="hidden" id="mDestDbVal" />
+          </div>
+          <div class="form-error hidden" id="mDestDbErr">Destination DB is required</div>
+        </div>
+
+        <!-- Row 4: Final Type + Confidence -->
         <div class="form-field">
           <label class="form-label">Final Type <span style="color:var(--danger,#ef4444)">*</span></label>
-          <input type="text" class="form-input" id="mFinalType" placeholder="e.g. VARCHAR(36)"
+          <input type="text" class="form-input" id="mFinalType" placeholder="e.g. VARCHAR(36)…"
             oninput="validateMappingField('mFinalType')" />
           <div class="form-error hidden" id="mFinalTypeErr">Final Type is required</div>
         </div>
+
+        <div class="form-field">
+          <label class="form-label">Confidence</label>
+          <input type="number" class="form-input" id="mConfidence" value="100" min="0" max="100"
+            style="font-family:var(--mono)" />
+        </div>
+
+        <!-- Row 5: Status (full width) -->
         <div class="form-field full">
           <label class="form-label">Status</label>
           <select class="form-select" id="mStatus">
@@ -877,6 +897,7 @@
             <option value="deprecated">deprecated</option>
           </select>
         </div>
+
       </div>
     </div>
     <div class="modal-footer">
@@ -974,7 +995,6 @@
           </label>
           <input type="text" class="form-input" id="dbName" placeholder="e.g. My DB_01"
             oninput="onDbKeyInput(this)" />
-          <!-- Live preview of sanitized key -->
           <div id="dbKeyPreview" style="margin-top:4px;font-size:11px;font-family:var(--mono);color:var(--text3);display:none">
             Will be saved as: <strong id="dbKeyPreviewVal"></strong>
           </div>
@@ -1029,7 +1049,7 @@
 
 <script>
 /* ══════════════════════════════════════
-   LOGIN LOGIC — เชื่อม Backend API
+   LOGIN LOGIC
 ══════════════════════════════════════ */
 
 const MAX_ATTEMPTS = 5;
@@ -1133,7 +1153,6 @@ async function doLogin() {
   if (btn) { btn.disabled = true; btn.classList.add('loading'); }
 
   try {
-    // เรียก Backend API จริง
     const res  = await fetch(`${typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000'}/api/auth/login`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1143,7 +1162,6 @@ async function doLogin() {
 
     if (!res.ok) throw new Error(json.detail || json.message || 'Invalid credentials');
 
-    // บันทึก token
     const token = json.data.access_token;
     const sessionData = {
       username,

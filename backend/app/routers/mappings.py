@@ -11,7 +11,7 @@ routers/mappings.py
 """
 import logging
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, field_validator
@@ -105,8 +105,8 @@ class MappingUpdate(BaseModel):
         return v.strip()
 
 
-def _today() -> str:
-    return datetime.utcnow().strftime("%Y-%m-%d")
+def _today() -> "date":
+    return datetime.utcnow().date()
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -159,7 +159,7 @@ async def create_mapping(
         )
     logger.info(
         "Mapping created: id=%s raw_type=%s src=%s dest=%s by user=%s",
-        record.id, body.raw_type, body.src_db, body.dest_db, current_user.get("sub"),
+        record.id, body.raw_type, body.src_db, body.dest_db, current_user.get("username"),
     )
     return APIResponse(success=True, message="Mapping rule created", data=record.to_dict())
 
@@ -194,7 +194,7 @@ async def update_mapping(
             },
         )
 
-    logger.info("Mapping updated: id=%s by user=%s", mapping_id, current_user.get("sub"))
+    logger.info("Mapping updated: id=%s by user=%s", mapping_id, current_user.get("username"))
     return APIResponse(success=True, message="Mapping rule updated", data=record.to_dict())
 
 
@@ -211,7 +211,7 @@ async def delete_mapping(
     data = record.to_dict()
     await db.delete(record)
     await db.commit()
-    logger.info("Mapping deleted: id=%s by user=%s", mapping_id, current_user.get("sub"))
+    logger.info("Mapping deleted: id=%s by user=%s", mapping_id, current_user.get("username"))
     return APIResponse(success=True, message="Mapping rule deleted", data=data)
 
 

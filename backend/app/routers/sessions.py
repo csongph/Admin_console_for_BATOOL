@@ -52,17 +52,29 @@ async def register_session(
     db:           AsyncSession = Depends(get_db),
     current_user: dict         = Depends(get_current_user),
 ):
-    existing = await db.execute(select(SessionRecord).where(SessionRecord.id == body.id))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail=f"Session '{body.id}' already exists")
-    record = SessionRecord(
-        **body.dict(),
-        created=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-    )
-    db.add(record)
+    """Upsert session — ถ้ามีอยู่แล้วให้ reset แทนที่จะ 409"""
+    created = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    result  = await db.execute(select(SessionRecord).where(SessionRecord.id == body.id))
+    record  = result.scalar_one_or_none()
+
+    if record:
+        # อัปเดต session เดิม — reset เวลาและค่าใหม่
+        record.user         = body.user
+        record.role         = body.role
+        record.db           = body.db
+        record.tables       = body.tables
+        record.ttl_minutes  = body.ttl_minutes
+        record.created      = created
+        record.status_cache = "active"
+        message = "Session refreshed"
+    else:
+        record  = SessionRecord(**body.dict(), created=created)
+        db.add(record)
+        message = "Session registered"
+
     await db.commit()
     await db.refresh(record)
-    return APIResponse(success=True, message="Session registered", data=record.to_dict())
+    return APIResponse(success=True, message=message, data=record.to_dict())
 
 
 @router.delete("/sessions/{session_id}", response_model=APIResponse)
@@ -86,8 +98,8 @@ async def cleanup_expired(
     db:           AsyncSession = Depends(get_db),
     current_user: dict         = Depends(get_current_user),
 ):
-    result = await db.execute(select(SessionRecord))
-    rows   = result.scalars().all()
+    result  = await db.execute(select(SessionRecord))
+    rows    = result.scalars().all()
     expired = [r for r in rows if r.to_dict()["status"] == "expired"]
     for r in expired:
         await db.delete(r)

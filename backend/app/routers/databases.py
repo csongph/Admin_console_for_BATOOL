@@ -186,7 +186,7 @@ async def create_database(
     db.add(record)
     await db.commit()
     await db.refresh(record)
-    logger.info("Database created: key=%s by user=%s", body.key, current_user.get("sub"))
+    logger.info("Database created: key=%s by user=%s", body.key, current_user.get("username"))
     return APIResponse(success=True, message="Database added", data=record.to_dict())
 
 
@@ -219,7 +219,7 @@ async def update_database(
         setattr(record, field, value)
     await db.commit()
     await db.refresh(record)
-    logger.info("Database updated: id=%s by user=%s", db_id, current_user.get("sub"))
+    logger.info("Database updated: id=%s by user=%s", db_id, current_user.get("username"))
     return APIResponse(success=True, message="Database updated", data=record.to_dict())
 
 
@@ -236,7 +236,7 @@ async def delete_database(
     data = record.to_dict()
     await db.delete(record)
     await db.commit()
-    logger.info("Database deleted: key=%s by user=%s", data["key"], current_user.get("sub"))
+    logger.info("Database deleted: key=%s by user=%s", data["key"], current_user.get("username"))
     return APIResponse(success=True, message="Database removed", data=data)
 
 

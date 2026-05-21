@@ -45,7 +45,6 @@ async function _refreshToken() {
     const data = await res.json();
     const newToken = data?.data?.access_token;
     if (!newToken) return false;
-    // เก็บลงที่เดิม (localStorage หรือ sessionStorage ตามที่เลือก)
     const inLocal = !!localStorage.getItem('ba_token');
     _saveToken(newToken, inLocal);
     return true;
@@ -72,13 +71,10 @@ async function apiCall(path, options = {}) {
   const data = await res.json();
 
   if (res.status === 401) {
-    // ลอง refresh token ก่อน logout
     const refreshed = await _refreshToken();
     if (refreshed) {
-      // retry ครั้งเดียว
       return apiCall(path, options);
     }
-    // refresh ไม่ได้ → logout
     localStorage.removeItem('ba_token');
     localStorage.removeItem('ba_session');
     sessionStorage.removeItem('ba_token');
@@ -91,7 +87,6 @@ async function apiCall(path, options = {}) {
   return data;
 }
 
-// Auto-refresh token 5 นาทีก่อนหมดอายุ (ค่า default expire = 60 นาที)
 const TOKEN_REFRESH_INTERVAL = 55 * 60 * 1000;
 setInterval(async () => {
   if (_getToken()) await _refreshToken();
@@ -110,7 +105,6 @@ setInterval(async () => {
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('ba_theme', theme);
-  // sync ทั้ง topbar toggle และ settings toggle
   const settingsCb = document.getElementById('settingsThemeToggle');
   if (settingsCb) settingsCb.checked = (theme === 'light');
 }
@@ -189,7 +183,6 @@ function toggleThemeFromSettings(checkbox) {
   applyTheme(checkbox.checked ? 'light' : 'dark');
 }
 
-// sync settings toggle เมื่อเปิดหน้า settings
 document.querySelector('.nav-item[data-page="settings"]')?.addEventListener('click', () => {
   const theme = document.documentElement.getAttribute('data-theme') || 'dark';
   const cb = document.getElementById('settingsThemeToggle');
@@ -321,8 +314,23 @@ let mappingCurrentPage = 1;
 const MAPPING_PAGE_SIZE = 8;
 let selectedMappings = new Set();
 
+// ── normMapping: map API response → internal object ──────────────────────────
+// DB columns: src_db, source_type, raw_type, logical_type, master_type,
+//             dest_db, final_type, confidence, status, updated
 function normMapping(m) {
-  return { id:m.id, srcDb:m.src_db, rawType:m.raw_type, sourceType:m.source_type||'', logicalType:m.logical_type, masterType:m.master_type, destDb:m.dest_db, finalType:m.final_type, confidence:m.confidence??100, status:m.status, updated:m.updated };
+  return {
+    id:          m.id,
+    srcDb:       m.src_db,
+    sourceType:  m.source_type   || '',   // Avro base type e.g. int, long, string
+    rawType:     m.raw_type,
+    logicalType: m.logical_type,
+    masterType:  m.master_type,
+    destDb:      m.dest_db,
+    finalType:   m.final_type,
+    confidence:  m.confidence    ?? 100,
+    status:      m.status,
+    updated:     m.updated,
+  };
 }
 
 async function fetchMappings() {
@@ -351,7 +359,7 @@ function getFilteredMappings() {
   const destDb = document.getElementById('filterDestDb')?.value || '';
   const status = document.getElementById('filterStatus')?.value || '';
   return mappingData.filter(m =>
-    (!search || [m.srcDb,m.rawType,m.logicalType,m.masterType,m.finalType].some(v => (v||'').toLowerCase().includes(search))) &&
+    (!search || [m.srcDb,m.sourceType,m.rawType,m.logicalType,m.masterType,m.finalType].some(v => (v||'').toLowerCase().includes(search))) &&
     (!srcDb  || m.srcDb  === srcDb)  &&
     (!destDb || m.destDb === destDb) &&
     (!status || m.status === status)
@@ -427,14 +435,10 @@ function updateBulkBar() {
 }
 
 // ════════════════════════════════════════════════════════════
-//  SEARCHABLE SELECT — reusable helper
+//  SEARCHABLE SELECT
 // ════════════════════════════════════════════════════════════
-// Usage pattern:
-//   HTML: input#<id>Search  select#<id>  input[hidden]#<id>Val
-//   Call: filterSearchableSelect(id, query) / commitSearchableSelect(id)
-//         pickSearchableSelect(id) on select.onchange
 
-let _ssOptions = {};  // cache: { mSrcDb: [{value, label}], ... }
+let _ssOptions = {};
 
 function _ssSetup(id, options) {
   _ssOptions[id] = options;
@@ -470,11 +474,9 @@ function pickSearchableSelect(id) {
 }
 
 function commitSearchableSelect(id) {
-  // เมื่อ blur ให้ซ่อน dropdown และ validate ว่ามีค่า
   setTimeout(() => {
     const sel = document.getElementById(id);
     if (sel) sel.classList.add('hidden');
-    // ถ้า search text ตรงกับ option ให้เลือกอัตโนมัติ
     const input  = document.getElementById(id + 'Search');
     const hidden = document.getElementById(id + 'Val');
     if (!input || !hidden) return;
@@ -562,44 +564,60 @@ function clearFieldError(id) {
 function validateMappingField(id) {
   const el  = document.getElementById(id);
   const val = el ? el.value.trim() : '';
-  if (!val) setFieldError(id, el?.placeholder ? `${id} is required` : 'This field is required');
+  if (!val) setFieldError(id, 'This field is required');
   else      clearFieldError(id);
   return !!val;
 }
 
+// ── _validateMappingForm: ตรวจครบทุก field รวม source_type ──────────────────
 function _validateMappingForm() {
   let ok = true;
   const srcDb  = getSearchableSelectValue('mSrcDb');
   const destDb = getSearchableSelectValue('mDestDb');
   const master = getSearchableSelectValue('mMasterType');
-  if (!srcDb)  { setFieldError('mSrcDb',      'Source DB is required');  ok = false; }
+
+  if (!srcDb)  { setFieldError('mSrcDb',      'Source DB is required');       ok = false; }
   else           clearFieldError('mSrcDb');
-  if (!destDb) { setFieldError('mDestDb',     'Destination DB is required'); ok = false; }
+  if (!destDb) { setFieldError('mDestDb',     'Destination DB is required');  ok = false; }
   else           clearFieldError('mDestDb');
-  if (!master) { setFieldError('mMasterType', 'Master Type is required'); ok = false; }
+  if (!master) { setFieldError('mMasterType', 'Master Type is required');     ok = false; }
   else           clearFieldError('mMasterType');
-  ['mRawType', 'mLogicalType', 'mFinalType'].forEach(id => {
+
+  // text fields — เรียงตาม DB schema
+  ['mSourceType', 'mRawType', 'mLogicalType', 'mFinalType'].forEach(id => {
     if (!validateMappingField(id)) ok = false;
   });
+
   return ok;
 }
 
+// ── editMapping: โหลดค่าทุก field รวม sourceType + confidence ───────────────
 function editMapping(id) {
   const m = mappingData.find(r => r.id === id);
   if (!m) return;
   loadMappingFormOptions().then(() => {
+    // searchable selects
     setSearchableSelectValue('mSrcDb',      m.srcDb);
     setSearchableSelectValue('mDestDb',     m.destDb);
     setSearchableSelectValue('mMasterType', m.masterType);
-    const rawTypeEl      = document.getElementById('mRawType');
-    const logicalTypeEl  = document.getElementById('mLogicalType');
-    const finalTypeEl    = document.getElementById('mFinalType');
-    const statusEl       = document.getElementById('mStatus');
-    if (rawTypeEl)     rawTypeEl.value     = m.rawType;
-    if (logicalTypeEl) logicalTypeEl.value = m.logicalType;
-    if (finalTypeEl)   finalTypeEl.value   = m.finalType;
-    if (statusEl)      statusEl.value      = m.status;
-    ['mSrcDb', 'mDestDb', 'mMasterType', 'mRawType', 'mLogicalType', 'mFinalType']
+
+    // text inputs — เรียงตาม DB schema
+    const sourceTypeEl = document.getElementById('mSourceType');
+    const rawTypeEl    = document.getElementById('mRawType');
+    const logicalEl    = document.getElementById('mLogicalType');
+    const finalTypeEl  = document.getElementById('mFinalType');
+    const confidenceEl = document.getElementById('mConfidence');
+    const statusEl     = document.getElementById('mStatus');
+
+    if (sourceTypeEl) sourceTypeEl.value = m.sourceType;
+    if (rawTypeEl)    rawTypeEl.value    = m.rawType;
+    if (logicalEl)    logicalEl.value    = m.logicalType;
+    if (finalTypeEl)  finalTypeEl.value  = m.finalType;
+    if (confidenceEl) confidenceEl.value = m.confidence;
+    if (statusEl)     statusEl.value     = m.status;
+
+    // clear errors
+    ['mSrcDb', 'mDestDb', 'mMasterType', 'mSourceType', 'mRawType', 'mLogicalType', 'mFinalType']
       .forEach(clearFieldError);
   });
   document.getElementById('mappingModalTitle').textContent = 'Edit Mapping Rule';
@@ -637,9 +655,11 @@ function bulkApprove() {
     .catch(e => showToast('Approve failed: ' + e.message, 'error'));
 }
 
+// ── openAddMapping: reset ทุก field รวม sourceType + confidence ──────────────
 function openAddMapping() {
   document.getElementById('mappingModalTitle').textContent = 'Add Mapping Rule';
-  // Reset searchable selects
+
+  // reset searchable selects
   ['mSrcDb', 'mDestDb', 'mMasterType'].forEach(id => {
     const inp = document.getElementById(id + 'Search');
     const hid = document.getElementById(id + 'Val');
@@ -647,19 +667,26 @@ function openAddMapping() {
     if (hid) hid.value = '';
     clearFieldError(id);
   });
-  // Reset text inputs
-  ['mRawType', 'mLogicalType', 'mFinalType'].forEach(id => {
+
+  // reset text inputs — เรียงตาม DB schema
+  ['mSourceType', 'mRawType', 'mLogicalType', 'mFinalType'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.value = ''; el.classList.remove('input-error', 'input-ok'); }
     clearFieldError(id);
   });
+
+  // reset confidence + status
+  const confEl   = document.getElementById('mConfidence');
   const statusEl = document.getElementById('mStatus');
+  if (confEl)   confEl.value   = 100;
   if (statusEl) statusEl.value = 'pending';
+
   delete document.getElementById('mappingModal').dataset.editId;
   loadMappingFormOptions();
   openModal('mappingModal');
 }
 
+// ── saveMapping: ส่ง payload ครบทุก field รวม source_type + confidence ───────
 async function saveMapping() {
   if (!_validateMappingForm()) {
     showToast('Please fix the errors before saving', 'error');
@@ -667,16 +694,19 @@ async function saveMapping() {
   }
   const saveBtn = document.getElementById('mSaveBtn');
   if (saveBtn) { saveBtn.classList.add('btn-loading'); saveBtn.textContent = 'Saving…'; }
+
   const payload = {
     src_db:       getSearchableSelectValue('mSrcDb'),
+    source_type:  document.getElementById('mSourceType').value.trim(),
     raw_type:     document.getElementById('mRawType').value.trim(),
     logical_type: document.getElementById('mLogicalType').value.trim(),
     master_type:  getSearchableSelectValue('mMasterType'),
     dest_db:      getSearchableSelectValue('mDestDb'),
     final_type:   document.getElementById('mFinalType').value.trim(),
-    confidence:   100,
+    confidence:   Number(document.getElementById('mConfidence')?.value ?? 100),
     status:       document.getElementById('mStatus')?.value || 'pending',
   };
+
   const editId = document.getElementById('mappingModal').dataset.editId;
   try {
     if (editId) {
@@ -689,7 +719,6 @@ async function saveMapping() {
     closeModal('mappingModal');
     await fetchMappings();
   } catch (e) {
-    // structured error from backend
     let msg = e.message;
     try { const parsed = JSON.parse(e.message); msg = parsed.message || msg; } catch {}
     showToast('Save failed: ' + msg, 'error');
@@ -698,12 +727,7 @@ async function saveMapping() {
   }
 }
 
-
-
-// Bulk Import — ซ่อนจน implement จริง
 function openBulkImport() { showToast('Bulk import coming soon', 'info'); }
-
-// AI Generate — ซ่อนจน implement จริง (endpoint ยังไม่มี)
 function openAIGenerate() { showToast('AI Generate coming soon — backend endpoint pending', 'info'); }
 
 // ════════════════════════════════════════════════════════════
@@ -796,7 +820,6 @@ function editDatabase(id) {
   document.getElementById('dbStatus').value  = db.status || 'active';
   document.getElementById('dbModalTitle').textContent = 'Edit Database';
   document.getElementById('dbModal').dataset.editId = id;
-  // Update save button text for edit mode
   const saveBtn = document.querySelector('#dbModal .btn-primary');
   if (saveBtn) saveBtn.textContent = 'Save Changes';
   openModal('dbModal');
@@ -814,7 +837,7 @@ function confirmDeleteDatabase(id) {
 }
 
 // ════════════════════════════════════════════════════════════
-//  DATABASE KEY SANITIZE (mirrors backend logic)
+//  DATABASE KEY SANITIZE
 // ════════════════════════════════════════════════════════════
 function sanitizeDbKey(raw) {
   return (raw || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -825,7 +848,6 @@ const _DB_KEY_RE = /^[a-z0-9_]+$/;
 function onDbKeyInput(input) {
   const raw       = input.value;
   const sanitized = sanitizeDbKey(raw);
-  // Show live preview
   const preview    = document.getElementById('dbKeyPreview');
   const previewVal = document.getElementById('dbKeyPreviewVal');
   if (sanitized && sanitized !== raw.trim().toLowerCase()) {
@@ -834,7 +856,6 @@ function onDbKeyInput(input) {
   } else {
     if (preview) preview.style.display = 'none';
   }
-  // Validate
   const errEl = document.getElementById('dbNameErr');
   if (!sanitized) {
     input.classList.add('input-error');
@@ -912,7 +933,6 @@ async function saveDatabase() {
     }
     closeModal('dbModal');
     await fetchDatabases();
-    // refresh mapping form options cache
     _mappingFormOptionsLoaded = false;
   } catch (e) {
     let msg = e.message;
@@ -922,8 +942,6 @@ async function saveDatabase() {
     if (saveBtn) { saveBtn.classList.remove('btn-loading'); saveBtn.textContent = 'Add Database'; }
   }
 }
-
-
 
 // ════════════════════════════════════════════════════════════
 //  SESSION MONITOR
@@ -941,13 +959,10 @@ function connectPresence() {
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const host  = new URL(API_URL).host;
-  // ส่ง JWT token ผ่าน query param
   const url   = `${proto}://${host}/ws/presence/admin?token=${encodeURIComponent(token)}`;
   presenceWs  = new WebSocket(url);
 
-  presenceWs.onopen = () => {
-    startPresencePing();
-  };
+  presenceWs.onopen = () => { startPresencePing(); };
   presenceWs.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
@@ -1049,7 +1064,7 @@ async function cleanupSessions() {
 async function refreshSessions() { await fetchSessions(); showToast('Sessions refreshed', 'success'); }
 
 // ════════════════════════════════════════════════════════════
-//  LOG VIEWER — dedup polling ด้วย /api/logs/new
+//  LOG VIEWER
 // ════════════════════════════════════════════════════════════
 
 let logAutoScroll  = true;
@@ -1112,7 +1127,6 @@ function toggleAutoScroll() {
   showToast(`Auto-scroll ${logAutoScroll ? 'enabled' : 'paused'}`, 'info');
 }
 
-// ── Polling ใช้ /api/logs/new เพื่อรับเฉพาะ entries ใหม่ (ไม่ซ้ำ) ──────────
 setInterval(async () => {
   const token    = _getToken();
   const terminal = document.getElementById('logTerminal');
@@ -1125,7 +1139,7 @@ setInterval(async () => {
       if (logAutoScroll) terminal.scrollTop = terminal.scrollHeight;
       filterLogs();
     }
-  } catch { /* เงียบ — ไม่ spam toast */ }
+  } catch { /* silent */ }
 }, 10_000);
 
 // ════════════════════════════════════════════════════════════
