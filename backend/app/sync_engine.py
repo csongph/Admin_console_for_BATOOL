@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE            = 100
 MAX_RETRIES           = 3
 SYNC_INTERVAL_SECONDS = 300        # auto-sync ทุก 5 นาที
-RETRY_BACKOFF_SECONDS = [0, 5, 30] # delay ก่อน retry แต่ละครั้ง
+RETRY_BACKOFF_SECONDS = [0, 0, 0] # delay ก่อน retry แต่ละครั้ง
 
 # ── Runtime state ─────────────────────────────────────────────────────────────
 _sync_running          = False

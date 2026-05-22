@@ -10,6 +10,7 @@ routers/mappings.py
   6. backward compatible
 """
 import logging
+import httpx
 from typing import Optional
 from datetime import datetime, date
 
@@ -21,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.schemas import APIResponse
 from app.core.security import get_current_user
+from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import MappingRule, DatatypeStandard
 
@@ -213,6 +215,194 @@ async def delete_mapping(
     await db.commit()
     logger.info("Mapping deleted: id=%s by user=%s", mapping_id, current_user.get("username"))
     return APIResponse(success=True, message="Mapping rule deleted", data=data)
+
+
+
+# ── Bulk Import ──────────────────────────────────────────────────────────────
+
+class BulkImportItem(BaseModel):
+    src_db:       str
+    raw_type:     str
+    source_type:  str = ""
+    logical_type: str = ""
+    master_type:  str = ""
+    dest_db:      str
+    final_type:   str = ""
+    confidence:   int = 100
+    status:       str = "draft"
+
+
+class BulkImportRequest(BaseModel):
+    rows: list[BulkImportItem]
+    skip_duplicates: bool = True
+
+
+@router.post("/mappings/bulk-import", response_model=APIResponse)
+async def bulk_import_mappings(
+    body:         BulkImportRequest,
+    db:           AsyncSession = Depends(get_db),
+    current_user: dict         = Depends(get_current_user),
+):
+    """
+    Import หลาย mapping rules พร้อมกัน
+    Returns: { imported, skipped, failed, errors }
+    """
+    if not body.rows:
+        raise HTTPException(status_code=422, detail="No rows provided")
+    if len(body.rows) > 1000:
+        raise HTTPException(status_code=422, detail="Maximum 1,000 rows per import")
+
+    imported, skipped, failed = 0, 0, 0
+    errors = []
+
+    for i, row in enumerate(body.rows):
+        record = MappingRule(
+            src_db       = row.src_db.strip(),
+            raw_type     = row.raw_type.strip(),
+            source_type  = row.source_type.strip(),
+            logical_type = row.logical_type.strip(),
+            master_type  = row.master_type.strip(),
+            dest_db      = row.dest_db.strip(),
+            final_type   = row.final_type.strip(),
+            confidence   = row.confidence,
+            status       = row.status,
+            updated      = _today(),
+        )
+        db.add(record)
+        try:
+            await db.flush()
+            imported += 1
+        except IntegrityError:
+            await db.rollback()
+            if body.skip_duplicates:
+                skipped += 1
+            else:
+                failed += 1
+                errors.append(f"Row {i+1}: duplicate ({row.raw_type}, {row.src_db}→{row.dest_db})")
+        except Exception as e:
+            await db.rollback()
+            failed += 1
+            errors.append(f"Row {i+1}: {str(e)}")
+
+    await db.commit()
+
+    logger.info(
+        "Bulk import: imported=%d skipped=%d failed=%d by user=%s",
+        imported, skipped, failed, current_user.get("username"),
+    )
+    return APIResponse(
+        success=True,
+        message=f"Import complete: {imported} imported, {skipped} skipped, {failed} failed",
+        data={"imported": imported, "skipped": skipped, "failed": failed, "errors": errors},
+    )
+
+
+# ── AI Generate ──────────────────────────────────────────────────────────────
+
+class AIGenerateRequest(BaseModel):
+    src_db:  str
+    dest_db: str
+    context: str = ""
+
+
+@router.post("/mappings/ai-generate", response_model=APIResponse)
+async def ai_generate_mappings(
+    body:         AIGenerateRequest,
+    current_user: dict        = Depends(get_current_user),
+):
+    """
+    เรียก Claude API จาก backend เพื่อ generate type mappings
+    Returns: { mappings: [...] }
+    """
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="ANTHROPIC_API_KEY ยังไม่ได้ตั้งค่าใน .env — ติดต่อ admin",
+        )
+
+    src  = body.src_db.strip()
+    dest = body.dest_db.strip()
+    if not src or not dest:
+        raise HTTPException(status_code=422, detail="src_db และ dest_db ต้องไม่ว่าง")
+    if src == dest:
+        raise HTTPException(status_code=422, detail="src_db และ dest_db ต้องต่างกัน")
+
+    context_line = f"\nAdditional context: {body.context.strip()}" if body.context.strip() else ""
+    prompt = (
+        f"You are a database type mapping expert. "
+        f"Generate a comprehensive list of data type mappings from {src} to {dest}.\n\n"
+        f"For each mapping provide:\n"
+        f"- raw_type: exact source type name in {src}\n"
+        f"- source_type: normalized category (string, integer, float, boolean, date, datetime, timestamp, binary, json, uuid, text, decimal)\n"
+        f"- logical_type: logical/semantic type\n"
+        f"- master_type: canonical AVRO/Confluent type (STRING, INT, LONG, FLOAT, DOUBLE, BOOLEAN, BYTES, NULL)\n"
+        f"- final_type: exact destination type name in {dest}\n"
+        f"- confidence: integer 0–100\n"
+        f"{context_line}\n\n"
+        f"Return ONLY a valid JSON array, no markdown, no explanation. "
+        f"Cover all major types for {src}. Aim for 20–40 mappings."
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key":         settings.ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type":      "application/json",
+                },
+                json={
+                    "model":      "claude-sonnet-4-20250514",
+                    "max_tokens": 4096,
+                    "messages":   [{"role": "user", "content": prompt}],
+                },
+            )
+            resp.raise_for_status()
+            result = resp.json()
+    except httpx.HTTPStatusError as e:
+        detail = e.response.json().get("error", {}).get("message", str(e))
+        raise HTTPException(status_code=502, detail=f"Claude API error: {detail}")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"ไม่สามารถเชื่อมต่อ Claude API: {str(e)}")
+
+    # Extract text content
+    text = ""
+    for block in result.get("content", []):
+        if block.get("type") == "text":
+            text += block.get("text", "")
+
+    # Parse JSON array from response
+    import re, json
+    match = re.search(r'\[[\s\S]*\]', text)
+    if not match:
+        raise HTTPException(status_code=502, detail="Claude ไม่ได้คืน JSON array — ลองใหม่")
+    try:
+        mappings = json.loads(match.group())
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="JSON จาก Claude parse ไม่ได้ — ลองใหม่")
+
+    if not isinstance(mappings, list) or len(mappings) == 0:
+        raise HTTPException(status_code=502, detail="Claude คืน mapping เปล่า")
+
+    # Inject src_db / dest_db และ sanitize
+    cleaned = []
+    for r in mappings:
+        if not isinstance(r, dict):
+            continue
+        cleaned.append({
+            "src_db":       src,
+            "raw_type":     str(r.get("raw_type",     "")),
+            "source_type":  str(r.get("source_type",  "")),
+            "logical_type": str(r.get("logical_type", "")),
+            "master_type":  str(r.get("master_type",  "")),
+            "dest_db":      dest,
+            "final_type":   str(r.get("final_type",   "")),
+            "confidence":   int(r.get("confidence",   100)),
+        })
+
+    logger.info("AI generate: src=%s dest=%s rows=%d user=%s", src, dest, len(cleaned), current_user.get("username"))
+    return APIResponse(success=True, message=f"Generated {len(cleaned)} mappings", data={"mappings": cleaned})
 
 
 # ── NEW: Lookup endpoint for dropdown — GET /api/datatype-standard/list ───────

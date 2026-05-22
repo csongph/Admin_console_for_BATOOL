@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str  # บังคับต้องตั้งใน .env
 
+    # Anthropic — ใส่ใน .env เท่านั้น ห้าม hardcode
+    ANTHROPIC_API_KEY: Optional[str] = None
+
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost",
         "http://localhost:3000",
