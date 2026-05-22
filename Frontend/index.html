@@ -816,11 +816,11 @@
         <!-- Row 1: Source DB + Source Type -->
         <div class="form-field">
           <label class="form-label">Source DB <span style="color:var(--danger,#ef4444)">*</span></label>
-          <div class="searchable-select-wrap">
+          <div class="searchable-select-wrap" data-ss="mSrcDb">
             <input type="text" class="form-input" id="mSrcDbSearch" placeholder="Search source DB…" autocomplete="off"
               oninput="filterSearchableSelect('mSrcDb', this.value)"
+              onfocus="openSearchableSelect('mSrcDb')"
               onblur="commitSearchableSelect('mSrcDb')" />
-            <select class="form-select hidden" id="mSrcDb" size="5" onchange="pickSearchableSelect('mSrcDb')"></select>
             <input type="hidden" id="mSrcDbVal" />
           </div>
           <div class="form-error hidden" id="mSrcDbErr">Source DB is required</div>
@@ -851,11 +851,11 @@
         <!-- Row 3: Master Type + Dest DB -->
         <div class="form-field">
           <label class="form-label">Master Type <span style="color:var(--danger,#ef4444)">*</span></label>
-          <div class="searchable-select-wrap">
+          <div class="searchable-select-wrap" data-ss="mMasterType">
             <input type="text" class="form-input" id="mMasterTypeSearch" placeholder="Search standard type…" autocomplete="off"
               oninput="filterSearchableSelect('mMasterType', this.value)"
+              onfocus="openSearchableSelect('mMasterType')"
               onblur="commitSearchableSelect('mMasterType')" />
-            <select class="form-select hidden" id="mMasterType" size="5" onchange="pickSearchableSelect('mMasterType')"></select>
             <input type="hidden" id="mMasterTypeVal" />
           </div>
           <div class="form-error hidden" id="mMasterTypeErr">Master Type is required</div>
@@ -863,11 +863,11 @@
 
         <div class="form-field">
           <label class="form-label">Destination DB <span style="color:var(--danger,#ef4444)">*</span></label>
-          <div class="searchable-select-wrap">
+          <div class="searchable-select-wrap" data-ss="mDestDb">
             <input type="text" class="form-input" id="mDestDbSearch" placeholder="Search destination DB…" autocomplete="off"
               oninput="filterSearchableSelect('mDestDb', this.value)"
+              onfocus="openSearchableSelect('mDestDb')"
               onblur="commitSearchableSelect('mDestDb')" />
-            <select class="form-select hidden" id="mDestDb" size="5" onchange="pickSearchableSelect('mDestDb')"></select>
             <input type="hidden" id="mDestDbVal" />
           </div>
           <div class="form-error hidden" id="mDestDbErr">Destination DB is required</div>
@@ -914,37 +914,50 @@
       <button class="modal-close" onclick="closeModal('aiModal')">✕</button>
     </div>
     <div class="modal-body">
-      <div id="aiStep1" class="">
+
+      <!-- Step 1: Config -->
+      <div id="aiStep1">
         <div class="ai-intro">
           <div class="ai-intro-icon">✦</div>
           <div class="ai-intro-text">
             <div class="ai-intro-title">Generate mappings with Claude AI</div>
-            <div class="ai-intro-desc">Select a database pair and Claude will suggest type mappings automatically. You can review and approve each suggestion before saving.</div>
+            <div class="ai-intro-desc">เลือกคู่ database แล้ว Claude จะ suggest type mappings ให้อัตโนมัติ — ตรวจสอบและ approve ก่อน save</div>
           </div>
         </div>
         <div class="form-grid" style="margin-top:24px">
           <div class="form-field">
-            <label class="form-label">Source Database</label>
+            <label class="form-label">Source Database <span class="required">*</span></label>
             <select class="form-select" id="aiSrcDb">
-              <option value="">— Select source —</option>
-              <option>sqlserver</option><option>postgresql</option><option>mysql</option><option>oracle</option><option>db2</option><option>snowflake</option>
+              <option value="">— กำลังโหลด… —</option>
             </select>
           </div>
           <div class="form-field">
-            <label class="form-label">Destination Database</label>
+            <label class="form-label">Destination Database <span class="required">*</span></label>
             <select class="form-select" id="aiDestDb">
-              <option value="">— Select destination —</option>
-              <option>confluent</option><option>postgresql</option><option>mysql</option>
+              <option value="">— กำลังโหลด… —</option>
             </select>
           </div>
           <div class="form-field full">
-            <label class="form-label">Additional context (optional)</label>
-            <textarea class="form-textarea" id="aiContext" placeholder="e.g. Focus on temporal types, include COLLATE handling, etc." rows="3"></textarea>
+            <label class="form-label">Context เพิ่มเติม (optional)</label>
+            <textarea class="form-textarea" id="aiContext"
+              placeholder="เช่น เน้น temporal types, รวม COLLATE handling, skip deprecated types…"
+              rows="3"></textarea>
           </div>
         </div>
+        <div id="aiDbLoadError" class="hidden" style="color:var(--danger,#ef4444);font-size:.85rem;margin-top:8px"></div>
       </div>
 
+      <!-- Step 2: Streaming thinking -->
       <div id="aiStep2" class="hidden">
+        <div class="ai-thinking-wrap">
+          <div class="ai-thinking-dots"><span></span><span></span><span></span></div>
+          <div id="aiThinkingLabel" class="ai-thinking-label">Claude กำลัง generate mappings…</div>
+        </div>
+        <div class="ai-stream-box" id="aiStreamBox"></div>
+      </div>
+
+      <!-- Step 3: Review -->
+      <div id="aiStep3" class="hidden">
         <div class="review-toolbar">
           <div class="review-stats">
             <span class="review-stat"><span class="dot success"></span><span id="rApproved">0</span> approved</span>
@@ -960,9 +973,10 @@
           <table class="data-table review-table">
             <thead>
               <tr>
-                <th>Source Type</th>
                 <th>Raw Type</th>
+                <th>Source Type</th>
                 <th>Logical Type</th>
+                <th>Master Type</th>
                 <th>Final Type</th>
                 <th>Confidence</th>
                 <th>Decision</th>
@@ -972,11 +986,12 @@
           </table>
         </div>
       </div>
+
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('aiModal')">Cancel</button>
+      <button class="btn btn-ghost" id="aiCancelBtn" onclick="aiModalClose()">Cancel</button>
       <button class="btn btn-accent" id="aiGenerateBtn" onclick="runAIGenerate()">✦ Generate</button>
-      <button class="btn btn-primary hidden" id="aiSaveBtn" onclick="saveApproved()">Save Approved</button>
+      <button class="btn btn-primary hidden" id="aiSaveBtn" onclick="saveApproved()">💾 Save Approved</button>
     </div>
   </div>
 </div>
@@ -1023,6 +1038,80 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('dbModal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveDatabase()">Add Database</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     BULK IMPORT MODAL
+══════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="importModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">↑ Bulk Import Mapping Rules</div>
+      <button class="modal-close" onclick="closeModal('importModal')">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Step 1: Upload Zone -->
+      <div id="importStep1">
+        <div class="import-format-hint">
+          <span class="import-format-badge">CSV</span>
+          <span class="import-format-badge">JSON</span>
+          <span style="color:var(--text3);font-size:.85rem;">
+            Columns: <code>src_db, raw_type, source_type, logical_type, master_type, dest_db, final_type, confidence, status</code>
+          </span>
+        </div>
+
+        <div class="import-dropzone" id="importDropzone"
+          ondragover="importDragOver(event)"
+          ondragleave="importDragLeave(event)"
+          ondrop="importDrop(event)"
+          onclick="document.getElementById('importFileInput').click()">
+          <div class="import-dropzone-icon">📂</div>
+          <div class="import-dropzone-text">Drop CSV or JSON file here</div>
+          <div class="import-dropzone-sub">or click to browse</div>
+          <input type="file" id="importFileInput" accept=".csv,.json" class="hidden"
+            onchange="importFileSelected(this)" />
+        </div>
+
+        <div class="import-template-row">
+          <button class="btn btn-ghost btn-sm" onclick="downloadImportTemplate('csv')">⬇ Download CSV Template</button>
+          <button class="btn btn-ghost btn-sm" onclick="downloadImportTemplate('json')">⬇ Download JSON Template</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Preview -->
+      <div id="importStep2" class="hidden">
+        <div class="import-preview-header">
+          <div id="importPreviewMeta" class="import-preview-meta"></div>
+          <button class="btn btn-ghost btn-sm" onclick="importReset()">✕ Clear</button>
+        </div>
+        <div class="import-preview-wrap">
+          <table class="import-preview-table" id="importPreviewTable">
+            <thead id="importPreviewHead"></thead>
+            <tbody id="importPreviewBody"></tbody>
+          </table>
+        </div>
+        <div id="importValidationErrors" class="import-errors hidden"></div>
+      </div>
+
+      <!-- Step 3: Progress -->
+      <div id="importStep3" class="hidden">
+        <div class="import-progress-wrap">
+          <div class="import-progress-label" id="importProgressLabel">Importing…</div>
+          <div class="import-progress-track">
+            <div class="import-progress-bar" id="importProgressBar" style="width:0%"></div>
+          </div>
+          <div class="import-progress-count" id="importProgressCount">0 / 0</div>
+        </div>
+        <div id="importResultLog" class="import-result-log"></div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('importModal')">Cancel</button>
+      <button class="btn btn-primary hidden" id="importRunBtn" onclick="runBulkImport()">Import Rows</button>
     </div>
   </div>
 </div>

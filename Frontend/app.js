@@ -435,53 +435,142 @@ function updateBulkBar() {
 }
 
 // ════════════════════════════════════════════════════════════
-//  SEARCHABLE SELECT
+//  SEARCHABLE SELECT  (custom dropdown — no blur/change race)
 // ════════════════════════════════════════════════════════════
 
 let _ssOptions = {};
+let _ssActive  = null; // id of currently open dropdown
 
-function _ssSetup(id, options) {
-  _ssOptions[id] = options;
-  const sel = document.getElementById(id);
-  if (!sel) return;
-  sel.innerHTML = options.map(o =>
-    `<option value="${o.value}">${o.label}</option>`
+/* Close all open dropdowns */
+function _ssCloseAll(exceptId) {
+  document.querySelectorAll('.ss-list').forEach(el => {
+    if (el.dataset.ssId !== exceptId) {
+      el.classList.add('hidden');
+    }
+  });
+  if (_ssActive && _ssActive !== exceptId) _ssActive = null;
+}
+
+/* Close on outside click */
+document.addEventListener('mousedown', (e) => {
+  if (!e.target.closest('.searchable-select-wrap')) {
+    _ssCloseAll(null);
+    _ssActive = null;
+  }
+});
+
+/* Build / rebuild the custom list element for a given id */
+function _ssBuildList(id) {
+  const wrap = document.querySelector(`.searchable-select-wrap[data-ss="${id}"]`);
+  if (!wrap) return null;
+  let list = wrap.querySelector('.ss-list');
+  if (!list) {
+    list = document.createElement('ul');
+    list.className = 'ss-list hidden';
+    list.dataset.ssId = id;
+    wrap.appendChild(list);
+  }
+  return list;
+}
+
+function _ssRenderList(id, opts) {
+  const list = _ssBuildList(id);
+  if (!list) return;
+  if (!opts || opts.length === 0) {
+    list.innerHTML = '<li class="ss-empty">No results</li>';
+    return;
+  }
+  list.innerHTML = opts.map(o =>
+    `<li class="ss-item" data-value="${o.value}">${o.label}</li>`
   ).join('');
+  // attach mousedown (not click) so it fires before input blur
+  list.querySelectorAll('.ss-item').forEach(li => {
+    li.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // prevent input from losing focus first
+      _ssPick(id, li.dataset.value);
+    });
+  });
 }
 
-function filterSearchableSelect(id, query) {
-  const sel = document.getElementById(id);
-  if (!sel) return;
-  const q = (query || '').toLowerCase();
-  const opts = (_ssOptions[id] || []).filter(o =>
-    !q || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
-  );
-  sel.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
-  if (opts.length > 0) sel.classList.remove('hidden');
-  else sel.classList.add('hidden');
-}
-
-function pickSearchableSelect(id) {
-  const sel   = document.getElementById(id);
-  const input = document.getElementById(id + 'Search');
+function _ssPick(id, value) {
+  const opts   = _ssOptions[id] || [];
+  const match  = opts.find(o => o.value === value);
+  const input  = document.getElementById(id + 'Search');
   const hidden = document.getElementById(id + 'Val');
-  if (!sel || !sel.value) return;
-  const chosen = (_ssOptions[id] || []).find(o => o.value === sel.value);
-  if (input)  input.value  = chosen ? chosen.label : sel.value;
-  if (hidden) hidden.value = sel.value;
-  sel.classList.add('hidden');
+  if (input)  input.value  = match ? match.label : value;
+  if (hidden) hidden.value = value;
+  _ssCloseAll(null);
+  _ssActive = null;
   clearFieldError(id);
 }
 
+/* Public API */
+
+function _ssSetup(id, options) {
+  _ssOptions[id] = options;
+  // Also populate the legacy hidden <select> (kept for any downstream code)
+  const sel = document.getElementById(id);
+  if (sel) {
+    sel.innerHTML = options.map(o =>
+      `<option value="${o.value}">${o.label}</option>`
+    ).join('');
+  }
+  _ssRenderList(id, options);
+}
+
+function filterSearchableSelect(id, query) {
+  const q    = (query || '').toLowerCase();
+  const opts = (_ssOptions[id] || []).filter(o =>
+    !q || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
+  );
+  _ssRenderList(id, opts);
+
+  // Show list when user starts typing
+  const list = _ssBuildList(id);
+  if (list) {
+    list.classList.remove('hidden');
+    _ssActive = id;
+  }
+
+  // If query cleared, also clear the hidden value
+  if (!query) {
+    const hidden = document.getElementById(id + 'Val');
+    if (hidden) hidden.value = '';
+  }
+}
+
+function openSearchableSelect(id) {
+  _ssCloseAll(id);
+  const query = (document.getElementById(id + 'Search') || {}).value || '';
+  const q     = query.toLowerCase();
+  const opts  = (_ssOptions[id] || []).filter(o =>
+    !q || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
+  );
+  _ssRenderList(id, opts);
+  const list = _ssBuildList(id);
+  if (list) {
+    list.classList.remove('hidden');
+    _ssActive = id;
+  }
+}
+
+// pickSearchableSelect kept for backward compatibility (called by old onchange)
+function pickSearchableSelect(id) {
+  const sel = document.getElementById(id);
+  if (sel && sel.value) _ssPick(id, sel.value);
+}
+
+// commitSearchableSelect — try to match typed text on blur
 function commitSearchableSelect(id) {
   setTimeout(() => {
-    const sel = document.getElementById(id);
-    if (sel) sel.classList.add('hidden');
+    const list   = _ssBuildList(id);
+    if (list) list.classList.add('hidden');
     const input  = document.getElementById(id + 'Search');
     const hidden = document.getElementById(id + 'Val');
     if (!input || !hidden) return;
+    if (hidden.value) return; // already picked
     const q = input.value.trim().toLowerCase();
-    if (!hidden.value && q) {
+    if (q) {
       const match = (_ssOptions[id] || []).find(o =>
         o.label.toLowerCase() === q || o.value.toLowerCase() === q
       );
@@ -491,12 +580,13 @@ function commitSearchableSelect(id) {
         clearFieldError(id);
       }
     }
-  }, 150);
+    if (_ssActive === id) _ssActive = null;
+  }, 200);
 }
 
 function setSearchableSelectValue(id, value) {
-  const opts   = _ssOptions[id] || [];
-  const match  = opts.find(o => o.value === value);
+  const opts  = _ssOptions[id] || [];
+  const match = opts.find(o => o.value === value);
   const input  = document.getElementById(id + 'Search');
   const hidden = document.getElementById(id + 'Val');
   if (input)  input.value  = match ? match.label : value;
@@ -661,11 +751,14 @@ function openAddMapping() {
 
   // reset searchable selects
   ['mSrcDb', 'mDestDb', 'mMasterType'].forEach(id => {
-    const inp = document.getElementById(id + 'Search');
-    const hid = document.getElementById(id + 'Val');
+    const inp  = document.getElementById(id + 'Search');
+    const hid  = document.getElementById(id + 'Val');
     if (inp) inp.value = '';
     if (hid) hid.value = '';
     clearFieldError(id);
+    // close dropdown list if open
+    const wrap = document.querySelector(`.searchable-select-wrap[data-ss="${id}"]`);
+    if (wrap) { const list = wrap.querySelector('.ss-list'); if (list) list.classList.add('hidden'); }
   });
 
   // reset text inputs — เรียงตาม DB schema
@@ -727,8 +820,582 @@ async function saveMapping() {
   }
 }
 
-function openBulkImport() { showToast('Bulk import coming soon', 'info'); }
-function openAIGenerate() { showToast('AI Generate coming soon — backend endpoint pending', 'info'); }
+// ════════════════════════════════════════════════════════════
+//  BULK IMPORT  (CSV / JSON → Mapping Rules)
+// ════════════════════════════════════════════════════════════
+
+const IMPORT_REQUIRED_COLS = ['src_db', 'raw_type', 'dest_db'];
+const IMPORT_ALL_COLS      = ['src_db','raw_type','source_type','logical_type','master_type','dest_db','final_type','confidence','status'];
+let   _importRows          = [];   // parsed & validated rows
+let   _importHasErrors     = false;
+
+function openBulkImport() {
+  importReset();
+  openModal('importModal');
+}
+
+function importReset() {
+  _importRows      = [];
+  _importHasErrors = false;
+
+  // reset steps
+  document.getElementById('importStep1').classList.remove('hidden');
+  document.getElementById('importStep2').classList.add('hidden');
+  document.getElementById('importStep3').classList.add('hidden');
+  document.getElementById('importRunBtn').classList.add('hidden');
+
+  // reset file input
+  const fi = document.getElementById('importFileInput');
+  if (fi) fi.value = '';
+
+  // reset preview
+  document.getElementById('importPreviewHead').innerHTML = '';
+  document.getElementById('importPreviewBody').innerHTML = '';
+  document.getElementById('importPreviewMeta').textContent = '';
+  document.getElementById('importValidationErrors').classList.add('hidden');
+  document.getElementById('importValidationErrors').innerHTML = '';
+
+  // reset progress
+  document.getElementById('importProgressBar').style.width = '0%';
+  document.getElementById('importProgressCount').textContent = '0 / 0';
+  document.getElementById('importProgressLabel').textContent = 'Importing…';
+  document.getElementById('importResultLog').innerHTML = '';
+}
+
+// ── Drag & drop ──────────────────────────────────────────────────────────────
+
+function importDragOver(e) {
+  e.preventDefault();
+  document.getElementById('importDropzone').classList.add('drag-over');
+}
+function importDragLeave(e) {
+  document.getElementById('importDropzone').classList.remove('drag-over');
+}
+function importDrop(e) {
+  e.preventDefault();
+  document.getElementById('importDropzone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) _importHandleFile(file);
+}
+function importFileSelected(input) {
+  if (input.files[0]) _importHandleFile(input.files[0]);
+}
+
+// ── File reading & parsing ────────────────────────────────────────────────────
+
+function _importHandleFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['csv','json'].includes(ext)) {
+    showToast('Only CSV and JSON files are supported', 'error');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const rows = ext === 'csv'
+        ? _parseCSV(e.target.result)
+        : _parseJSON(e.target.result);
+      _importShowPreview(rows, file.name);
+    } catch (err) {
+      showToast('Failed to parse file: ' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function _parseCSV(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+  if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row');
+
+  // Parse header (handle quoted headers)
+  const headers = _csvSplitLine(lines[0]).map(h => h.trim().toLowerCase().replace(/^"|"$/g,''));
+
+  return lines.slice(1).map((line, i) => {
+    const vals = _csvSplitLine(line);
+    const row  = {};
+    headers.forEach((h, j) => { row[h] = (vals[j] || '').trim().replace(/^"|"$/g,''); });
+    return row;
+  });
+}
+
+function _csvSplitLine(line) {
+  const result = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQ = !inQ; }
+    else if (ch === ',' && !inQ) { result.push(cur); cur = ''; }
+    else { cur += ch; }
+  }
+  result.push(cur);
+  return result;
+}
+
+function _parseJSON(text) {
+  const data = JSON.parse(text);
+  if (!Array.isArray(data)) throw new Error('JSON must be an array of objects');
+  return data.map(item => {
+    const row = {};
+    IMPORT_ALL_COLS.forEach(col => { row[col] = item[col] !== undefined ? String(item[col]) : ''; });
+    return row;
+  });
+}
+
+// ── Preview & validation ──────────────────────────────────────────────────────
+
+function _importShowPreview(rows, filename) {
+  _importRows      = rows;
+  _importHasErrors = false;
+
+  const errors     = [];
+  const errorRows  = new Set();
+
+  rows.forEach((row, i) => {
+    IMPORT_REQUIRED_COLS.forEach(col => {
+      if (!row[col] || !row[col].trim()) {
+        errors.push(`Row ${i + 1}: missing required field "${col}"`);
+        errorRows.add(i);
+        _importHasErrors = true;
+      }
+    });
+    // validate confidence if present
+    const conf = row.confidence;
+    if (conf !== undefined && conf !== '') {
+      const n = Number(conf);
+      if (isNaN(n) || n < 0 || n > 100) {
+        errors.push(`Row ${i + 1}: "confidence" must be 0–100`);
+        errorRows.add(i);
+        _importHasErrors = true;
+      }
+    }
+  });
+
+  // Show step 2
+  document.getElementById('importStep1').classList.add('hidden');
+  document.getElementById('importStep2').classList.remove('hidden');
+
+  // Meta
+  const metaEl = document.getElementById('importPreviewMeta');
+  metaEl.innerHTML = `<strong>${filename}</strong> — ${rows.length} row(s)` +
+    (_importHasErrors ? ` <span style="color:#ef4444">⚠ ${errors.length} error(s)</span>` : ' <span style="color:#22c55e">✓ Valid</span>');
+
+  // Build preview table (max 50 rows shown)
+  const cols    = IMPORT_ALL_COLS.filter(c => rows.some(r => r[c]));
+  const headEl  = document.getElementById('importPreviewHead');
+  const bodyEl  = document.getElementById('importPreviewBody');
+
+  headEl.innerHTML = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+
+  const displayRows = rows.slice(0, 50);
+  bodyEl.innerHTML = displayRows.map((row, i) =>
+    `<tr class="${errorRows.has(i) ? 'row-error' : ''}">` +
+    cols.map(c => `<td title="${(row[c]||'').replace(/"/g,'&quot;')}">${row[c] || '<span style="color:var(--text3)">—</span>'}</td>`).join('') +
+    '</tr>'
+  ).join('');
+
+  if (rows.length > 50) {
+    bodyEl.innerHTML += `<tr><td colspan="${cols.length}" style="color:var(--text3);text-align:center;padding:8px">… and ${rows.length - 50} more rows</td></tr>`;
+  }
+
+  // Show errors
+  const errEl = document.getElementById('importValidationErrors');
+  if (errors.length > 0) {
+    errEl.classList.remove('hidden');
+    errEl.innerHTML = '<ul>' + errors.slice(0, 10).map(e => `<li>${e}</li>`).join('') +
+      (errors.length > 10 ? `<li>…and ${errors.length - 10} more</li>` : '') + '</ul>';
+  } else {
+    errEl.classList.add('hidden');
+  }
+
+  // Show/hide import button
+  const runBtn = document.getElementById('importRunBtn');
+  if (_importHasErrors) {
+    runBtn.classList.add('hidden');
+  } else {
+    runBtn.classList.remove('hidden');
+    runBtn.textContent = `Import ${rows.length} Row(s)`;
+    runBtn.disabled = false;
+  }
+}
+
+// ── Run import ────────────────────────────────────────────────────────────────
+
+async function runBulkImport() {
+  if (!_importRows.length) return;
+
+  const runBtn = document.getElementById('importRunBtn');
+  runBtn.disabled = true;
+
+  // Show step 3
+  document.getElementById('importStep2').classList.add('hidden');
+  document.getElementById('importStep3').classList.remove('hidden');
+
+  const total    = _importRows.length;
+  const logEl    = document.getElementById('importResultLog');
+  const barEl    = document.getElementById('importProgressBar');
+  const countEl  = document.getElementById('importProgressCount');
+  const labelEl  = document.getElementById('importProgressLabel');
+
+  let ok = 0, skipped = 0, failed = 0;
+
+  for (let i = 0; i < total; i++) {
+    const row  = _importRows[i];
+    const pct  = Math.round(((i + 1) / total) * 100);
+    barEl.style.width  = pct + '%';
+    countEl.textContent = `${i + 1} / ${total}`;
+    labelEl.textContent = `Importing row ${i + 1} of ${total}…`;
+
+    const payload = {
+      src_db:       row.src_db      || '',
+      raw_type:     row.raw_type    || '',
+      source_type:  row.source_type || '',
+      logical_type: row.logical_type|| '',
+      master_type:  row.master_type || '',
+      dest_db:      row.dest_db     || '',
+      final_type:   row.final_type  || '',
+      confidence:   row.confidence !== '' ? Number(row.confidence) : 100,
+      status:       row.status      || 'draft',
+    };
+
+    try {
+      await apiCall('/api/mappings', { method: 'POST', body: JSON.stringify(payload) });
+      ok++;
+      const line = document.createElement('div');
+      line.className = 'log-line log-ok';
+      line.textContent = `✓ [${i+1}] ${payload.src_db} → ${payload.dest_db}  |  ${payload.raw_type}`;
+      logEl.appendChild(line);
+    } catch (err) {
+      const isDup = err.message && (err.message.includes('409') || err.message.toLowerCase().includes('duplicate'));
+      if (isDup) {
+        skipped++;
+        const line = document.createElement('div');
+        line.className = 'log-line log-skip';
+        line.textContent = `⚠ [${i+1}] Skipped (duplicate): ${payload.raw_type} ${payload.src_db}→${payload.dest_db}`;
+        logEl.appendChild(line);
+      } else {
+        failed++;
+        const line = document.createElement('div');
+        line.className = 'log-line log-err';
+        line.textContent = `✗ [${i+1}] Error: ${err.message}`;
+        logEl.appendChild(line);
+      }
+    }
+
+    // Auto-scroll log
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // Done
+  barEl.style.width  = '100%';
+  labelEl.textContent = `Done! ${ok} imported, ${skipped} skipped, ${failed} failed`;
+  labelEl.style.color = failed > 0 ? 'var(--danger,#ef4444)' : ok > 0 ? '#22c55e' : 'var(--text2)';
+
+  showToast(`Import complete: ${ok} added, ${skipped} skipped, ${failed} failed`, failed > 0 ? 'error' : 'success');
+  await fetchMappings();
+
+  runBtn.textContent = 'Close';
+  runBtn.disabled    = false;
+  runBtn.classList.remove('hidden');
+  runBtn.onclick     = () => closeModal('importModal');
+}
+
+// ── Template download ─────────────────────────────────────────────────────────
+
+function downloadImportTemplate(type) {
+  const sample = [
+    { src_db:'postgres', raw_type:'varchar', source_type:'string', logical_type:'string', master_type:'STRING', dest_db:'kafka', final_type:'string', confidence:100, status:'active' },
+    { src_db:'mysql',    raw_type:'int',     source_type:'int',    logical_type:'integer',master_type:'INTEGER',dest_db:'kafka', final_type:'int',    confidence:100, status:'active' },
+  ];
+
+  let content, filename, mime;
+
+  if (type === 'csv') {
+    const header = IMPORT_ALL_COLS.join(',');
+    const rows   = sample.map(r => IMPORT_ALL_COLS.map(c => r[c]).join(','));
+    content  = [header, ...rows].join('\n');
+    filename = 'mapping_import_template.csv';
+    mime     = 'text/csv';
+  } else {
+    content  = JSON.stringify(sample, null, 2);
+    filename = 'mapping_import_template.json';
+    mime     = 'application/json';
+  }
+
+  const blob = new Blob([content], { type: mime });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+// ════════════════════════════════════════════════════════════
+//  AI MAPPING GENERATOR  (calls Claude API directly)
+// ════════════════════════════════════════════════════════════
+
+let _aiRows      = [];   // parsed suggestions from Claude
+let _aiDecisions = {};   // rowIndex → 'approved' | 'rejected' | 'pending'
+
+// ── Open / Close ─────────────────────────────────────────────────────────────
+
+async function openAIGenerate() {
+  _aiReset();
+  openModal('aiModal');
+  await _aiLoadDatabases();
+}
+
+function aiModalClose() {
+  closeModal('aiModal');
+}
+
+function _aiReset() {
+  _aiRows      = [];
+  _aiDecisions = {};
+
+  _aiShowStep(1);
+  document.getElementById('aiGenerateBtn').classList.remove('hidden');
+  document.getElementById('aiGenerateBtn').disabled = false;
+  document.getElementById('aiSaveBtn').classList.add('hidden');
+  document.getElementById('aiStreamBox').textContent = '';
+  document.getElementById('reviewBody').innerHTML    = '';
+  document.getElementById('aiDbLoadError').classList.add('hidden');
+  _aiUpdateStats();
+}
+
+function _aiShowStep(n) {
+  [1, 2, 3].forEach(i => {
+    const el = document.getElementById('aiStep' + i);
+    if (el) el.classList.toggle('hidden', i !== n);
+  });
+}
+
+// ── Load DB list from API ─────────────────────────────────────────────────────
+
+async function _aiLoadDatabases() {
+  const srcSel  = document.getElementById('aiSrcDb');
+  const destSel = document.getElementById('aiDestDb');
+  const errEl   = document.getElementById('aiDbLoadError');
+
+  srcSel.innerHTML  = '<option value="">— กำลังโหลด… —</option>';
+  destSel.innerHTML = '<option value="">— กำลังโหลด… —</option>';
+
+  try {
+    const res = await apiCall('/api/database-records/enabled?limit=200');
+    const dbs = (res.data || []).map(d => d.key).filter(Boolean);
+
+    const makeOptions = () => ['<option value="">— เลือก database —</option>',
+      ...dbs.map(k => `<option value="${k}">${k}</option>`)
+    ].join('');
+
+    srcSel.innerHTML  = makeOptions();
+    destSel.innerHTML = makeOptions();
+  } catch (e) {
+    errEl.textContent = 'โหลด database list ไม่ได้: ' + e.message;
+    errEl.classList.remove('hidden');
+    // Fallback hardcoded
+    const fallback = ['postgresql','mysql','sqlserver','oracle','db2','snowflake','confluent','kafka'];
+    const opts = ['<option value="">— เลือก database —</option>',
+      ...fallback.map(k => `<option value="${k}">${k}</option>`)
+    ].join('');
+    srcSel.innerHTML  = opts;
+    destSel.innerHTML = opts;
+  }
+}
+
+// ── Generate ──────────────────────────────────────────────────────────────────
+
+async function runAIGenerate() {
+  const srcDb   = document.getElementById('aiSrcDb').value.trim();
+  const destDb  = document.getElementById('aiDestDb').value.trim();
+  const context = document.getElementById('aiContext').value.trim();
+
+  if (!srcDb || !destDb) {
+    showToast('กรุณาเลือก Source และ Destination database', 'error');
+    return;
+  }
+  if (srcDb === destDb) {
+    showToast('Source และ Destination ต้องเป็นคนละ database', 'error');
+    return;
+  }
+
+  const genBtn = document.getElementById('aiGenerateBtn');
+  genBtn.disabled  = true;
+  genBtn.innerHTML = '<span class="spinner-sm"></span> Generating…';
+
+  _aiShowStep(2);
+  document.getElementById('aiThinkingLabel').textContent =
+    `Claude กำลัง generate type mappings สำหรับ ${srcDb} → ${destDb}…`;
+  document.getElementById('aiStreamBox').textContent = '';
+
+  const prompt = _aiBuiltPrompt(srcDb, destDb, context);
+
+  try {
+    const rows = await _aiCallClaude(prompt, srcDb, destDb);
+    _aiRows      = rows;
+    _aiDecisions = {};
+    rows.forEach((_, i) => { _aiDecisions[i] = 'pending'; });
+
+    _aiRenderReviewTable(srcDb, destDb);
+    _aiShowStep(3);
+    document.getElementById('aiSaveBtn').classList.remove('hidden');
+    genBtn.classList.add('hidden');
+    showToast(`Claude แนะนำ ${rows.length} mapping(s) — ตรวจสอบก่อน save`, 'success');
+  } catch (e) {
+    showToast('AI Generate ล้มเหลว: ' + e.message, 'error');
+    _aiShowStep(1);
+    genBtn.disabled  = false;
+    genBtn.innerHTML = '✦ Generate';
+  }
+}
+
+// ── Prompt builder ────────────────────────────────────────────────────────────
+
+function _aiBuiltPrompt(srcDb, destDb, context) {
+  return `You are a database type mapping expert. Generate a comprehensive list of data type mappings from ${srcDb} to ${destDb}.
+
+For each mapping, provide:
+- raw_type: the exact source type name in ${srcDb}
+- source_type: normalized source category (string, integer, float, boolean, date, datetime, timestamp, binary, json, array, uuid, text, decimal, etc.)
+- logical_type: the logical/semantic type (same as source_type but may differ for special cases)
+- master_type: the canonical AVRO/Confluent standard type (STRING, INT, LONG, FLOAT, DOUBLE, BOOLEAN, BYTES, NULL, ARRAY, MAP, RECORD, ENUM, FIXED, etc.)
+- final_type: the exact destination type name in ${destDb}
+- confidence: integer 0-100 (how certain this mapping is — 100 = industry standard, 70-99 = common, below 70 = ambiguous)
+
+${context ? `Additional context: ${context}\n` : ''}
+
+Return ONLY a valid JSON array — no markdown, no explanation, no preamble. Example format:
+[
+  {"raw_type":"varchar","source_type":"string","logical_type":"string","master_type":"STRING","final_type":"text","confidence":100},
+  {"raw_type":"int","source_type":"integer","logical_type":"integer","master_type":"INT","final_type":"integer","confidence":100}
+]
+
+Cover all major types for ${srcDb} including: numeric, string/text, date/time, boolean, binary, and any ${srcDb}-specific types. Aim for 20-40 mappings.`;
+}
+
+// ── Backend proxy call (key อยู่ที่ server — ปลอดภัย) ────────────────────────
+
+async function _aiCallClaude(prompt, srcDb, destDb) {
+  const streamBox = document.getElementById('aiStreamBox');
+  streamBox.textContent = 'กำลังเรียก Claude API ผ่าน backend…';
+
+  const context = document.getElementById('aiContext').value.trim();
+
+  const res = await apiCall('/api/mappings/ai-generate', {
+    method: 'POST',
+    body: JSON.stringify({ src_db: srcDb, dest_db: destDb, context }),
+  });
+
+  // แสดง raw output ใน stream box เพื่อ debug
+  const mappings = res.data?.mappings || [];
+  streamBox.textContent = JSON.stringify(mappings, null, 2);
+
+  if (!mappings.length) throw new Error('Claude คืน mapping เปล่า');
+  return mappings;
+}
+
+// ── Review table ──────────────────────────────────────────────────────────────
+
+function _aiRenderReviewTable(srcDb, destDb) {
+  const tbody = document.getElementById('reviewBody');
+  tbody.innerHTML = _aiRows.map((row, i) => `
+    <tr id="aiRow_${i}" class="ai-review-row ai-row-pending">
+      <td><code>${_esc(row.raw_type)}</code></td>
+      <td>${_esc(row.source_type || '')}</td>
+      <td>${_esc(row.logical_type || '')}</td>
+      <td>${_esc(row.master_type || '')}</td>
+      <td>${_esc(row.final_type || '')}</td>
+      <td>
+        <div class="conf-bar-wrap">
+          <div class="conf-bar" style="width:${row.confidence || 0}%"></div>
+          <span class="conf-label">${row.confidence ?? '?'}%</span>
+        </div>
+      </td>
+      <td>
+        <div class="decision-btns">
+          <button class="btn-decision approve" onclick="aiDecide(${i},'approved')" title="Approve">✓</button>
+          <button class="btn-decision reject"  onclick="aiDecide(${i},'rejected')" title="Reject">✕</button>
+        </div>
+      </td>
+    </tr>`).join('');
+  _aiUpdateStats();
+}
+
+function _esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function aiDecide(i, decision) {
+  _aiDecisions[i] = decision;
+  const row = document.getElementById('aiRow_' + i);
+  if (row) {
+    row.classList.remove('ai-row-pending','ai-row-approved','ai-row-rejected');
+    row.classList.add('ai-row-' + decision);
+  }
+  // update button active state
+  const btns = row?.querySelectorAll('.btn-decision');
+  btns?.forEach(b => b.classList.remove('active'));
+  if (decision === 'approved') row?.querySelector('.approve')?.classList.add('active');
+  if (decision === 'rejected') row?.querySelector('.reject')?.classList.add('active');
+
+  _aiUpdateStats();
+}
+
+function batchApprove() {
+  _aiRows.forEach((_, i) => aiDecide(i, 'approved'));
+}
+function batchReject() {
+  _aiRows.forEach((_, i) => aiDecide(i, 'rejected'));
+}
+
+function _aiUpdateStats() {
+  const vals   = Object.values(_aiDecisions);
+  const counts = { approved: 0, rejected: 0, pending: 0 };
+  vals.forEach(v => { if (counts[v] !== undefined) counts[v]++; });
+  const pending = _aiRows.length - vals.length;
+  document.getElementById('rApproved').textContent = counts.approved;
+  document.getElementById('rRejected').textContent = counts.rejected;
+  document.getElementById('rPending').textContent  = counts.pending + pending;
+
+  const saveBtn = document.getElementById('aiSaveBtn');
+  if (saveBtn) {
+    const n = counts.approved;
+    saveBtn.textContent = n > 0 ? `💾 Save ${n} Approved` : '💾 Save Approved';
+    saveBtn.disabled    = n === 0;
+  }
+}
+
+// ── Save approved rows ────────────────────────────────────────────────────────
+
+async function saveApproved() {
+  const toSave = _aiRows.filter((_, i) => _aiDecisions[i] === 'approved');
+  if (toSave.length === 0) { showToast('ยังไม่ได้ approve row ใด', 'error'); return; }
+
+  const saveBtn = document.getElementById('aiSaveBtn');
+  saveBtn.disabled  = true;
+  saveBtn.innerHTML = '<span class="spinner-sm"></span> Saving…';
+
+  let ok = 0, fail = 0;
+  for (const row of toSave) {
+    const payload = {
+      src_db:       row.src_db       || '',
+      raw_type:     row.raw_type     || '',
+      source_type:  row.source_type  || '',
+      logical_type: row.logical_type || '',
+      master_type:  row.master_type  || '',
+      dest_db:      row.dest_db      || '',
+      final_type:   row.final_type   || '',
+      confidence:   row.confidence   ?? 100,
+      status:       'active',
+    };
+    try {
+      await apiCall('/api/mappings', { method: 'POST', body: JSON.stringify(payload) });
+      ok++;
+    } catch { fail++; }
+  }
+
+  showToast(`บันทึกแล้ว ${ok} mapping(s)${fail ? ` — ล้มเหลว ${fail}` : ''}`, fail ? 'error' : 'success');
+  await fetchMappings();
+  closeModal('aiModal');
+}
 
 // ════════════════════════════════════════════════════════════
 //  DATABASE REGISTRY
