@@ -184,6 +184,10 @@ async def update_user(
         # ห้าม downgrade ตัวเองออกจาก admin
         if user.username == current_user["username"] and body.role != "admin":
             raise HTTPException(status_code=400, detail="ไม่สามารถเปลี่ยน role ของตัวเองได้")
+        # ห้าม downgrade env superadmin
+        from app.core.config import settings as _settings
+        if user.username == _settings.ADMIN_USERNAME and body.role != "admin":
+            raise HTTPException(status_code=400, detail="ไม่สามารถเปลี่ยน role ของ superadmin จาก env ได้")
         changes["role"] = {"from": user.role, "to": body.role}
         user.role = body.role
 
@@ -254,6 +258,11 @@ async def delete_user(
         raise HTTPException(status_code=404, detail="ไม่พบผู้ใช้")
     if user.username == current_user["username"]:
         raise HTTPException(status_code=400, detail="ไม่สามารถลบตัวเองได้")
+
+    # ป้องกันลบ env superadmin
+    from app.core.config import settings as _settings
+    if user.username == _settings.ADMIN_USERNAME:
+        raise HTTPException(status_code=400, detail="ไม่สามารถลบ superadmin จาก env ได้")
 
     data = user.to_dict()
     await db.delete(user)

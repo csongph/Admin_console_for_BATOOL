@@ -583,9 +583,8 @@
           <p class="page-desc">Manage data type conversion rules across database pairs</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-ghost" onclick="openBulkImport()">↑ Bulk Import</button>
-          <button class="btn btn-accent" onclick="openAIGenerate()">✦ AI Generate</button>
-          <button class="btn btn-primary" onclick="openAddMapping()">+ Add Rule</button>
+          <button class="btn btn-ghost" id="btnBulkImport" onclick="openBulkImport()">↑ Bulk Import</button>
+          <button class="btn btn-primary" id="btnAddRule" onclick="openAddMapping()">+ Add Rule</button>
         </div>
       </div>
 
@@ -839,7 +838,6 @@
           <button class="settings-nav-item active" data-section="general" onclick="switchSettings('general', this)">General</button>
           <button class="settings-nav-item" data-section="users" onclick="switchSettings('users', this)">👥 Users</button>
           <button class="settings-nav-item" data-section="security" onclick="switchSettings('security', this)">Security</button>
-          <button class="settings-nav-item" data-section="ai" onclick="switchSettings('ai', this)">AI Mapping</button>
           <button class="settings-nav-item" data-section="upload" onclick="switchSettings('upload', this)">Upload</button>
           <button class="settings-nav-item" data-section="ratelimit" onclick="switchSettings('ratelimit', this)">Rate Limiting</button>
         </div>
@@ -902,6 +900,150 @@
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- ══ SECURITY SECTION ══════════════════════════════════════════ -->
+          <div class="settings-section hidden" id="settings-security">
+            <div class="settings-group">
+              <div class="settings-group-title">Session</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Session Timeout</div>
+                  <div class="setting-desc">ระยะเวลาที่ token มีอายุก่อน logout อัตโนมัติ (นาที)</div>
+                </div>
+                <div class="setting-control">
+                  <input type="number" class="form-input" id="secSessionTimeout" min="5" max="1440" value="60" style="width:100px" />
+                </div>
+              </div>
+            </div>
+            <div class="settings-group">
+              <div class="settings-group-title">Password Policy</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">ความยาวขั้นต่ำ</div>
+                  <div class="setting-desc">จำนวนตัวอักษรขั้นต่ำของ password</div>
+                </div>
+                <div class="setting-control">
+                  <input type="number" class="form-input" id="secMinPwLen" min="4" max="32" value="6" style="width:100px" />
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Max Login Attempts</div>
+                  <div class="setting-desc">จำนวนครั้งที่ login ผิดก่อน lockout</div>
+                </div>
+                <div class="setting-control">
+                  <input type="number" class="form-input" id="secMaxAttempts" min="3" max="20" value="5" style="width:100px" />
+                </div>
+              </div>
+            </div>
+            <div class="settings-group">
+              <div class="settings-group-title">Active Sessions</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">ยกเลิก session ที่หมดอายุ</div>
+                  <div class="setting-desc">ล้าง session ที่หมดอายุแล้วออกจากระบบ</div>
+                </div>
+                <div class="setting-control">
+                  <button class="btn btn-ghost btn-sm" onclick="cleanExpiredSessions()">🗑 Clean Expired</button>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">ยกเลิก session ทั้งหมด</div>
+                  <div class="setting-desc">บังคับ logout ผู้ใช้ทุกคน (ยกเว้นตัวเอง)</div>
+                </div>
+                <div class="setting-control">
+                  <button class="btn btn-sm" style="background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.25)" onclick="revokeAllSessions()">⚠ Revoke All</button>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:20px;display:flex;justify-content:flex-end">
+              <button class="btn btn-primary btn-sm" onclick="saveSecuritySettings()">บันทึกการตั้งค่า</button>
+            </div>
+          </div>
+
+          <!-- ══ UPLOAD SECTION ════════════════════════════════════════════ -->
+          <div class="settings-section hidden" id="settings-upload">
+            <div class="settings-group">
+              <div class="settings-group-title">Bulk Import</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">รูปแบบที่รองรับ</div>
+                  <div class="setting-desc">CSV และ JSON — ดูตัวอย่าง format ด้านล่าง</div>
+                </div>
+                <div class="setting-control">
+                  <button class="btn btn-primary btn-sm" onclick="openBulkImport()">↑ Bulk Import</button>
+                </div>
+              </div>
+            </div>
+            <div class="settings-group">
+              <div class="settings-group-title">CSV Format</div>
+              <pre style="background:var(--bg3);border-radius:8px;padding:14px 16px;font-size:12px;font-family:var(--mono);color:var(--text2);overflow-x:auto;white-space:pre">src_db,raw_type,dest_db,final_type,status
+MySQL,VARCHAR,PostgreSQL,TEXT,approved
+MySQL,INT,PostgreSQL,INTEGER,approved</pre>
+            </div>
+            <div class="settings-group">
+              <div class="settings-group-title">JSON Format</div>
+              <pre style="background:var(--bg3);border-radius:8px;padding:14px 16px;font-size:12px;font-family:var(--mono);color:var(--text2);overflow-x:auto;white-space:pre">[
+  {
+    "src_db": "MySQL",
+    "raw_type": "VARCHAR",
+    "dest_db": "PostgreSQL",
+    "final_type": "TEXT",
+    "status": "approved"
+  }
+]</pre>
+            </div>
+          </div>
+
+          <!-- ══ RATE LIMITING SECTION ══════════════════════════════════════ -->
+          <div class="settings-section hidden" id="settings-ratelimit">
+            <div class="settings-group">
+              <div class="settings-group-title">API Rate Limits</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Max Requests / minute</div>
+                  <div class="setting-desc">จำนวน API request สูงสุดต่อนาทีต่อ user</div>
+                </div>
+                <div class="setting-control">
+                  <input type="number" class="form-input" id="rlMaxReqMin" min="10" max="10000" value="300" style="width:110px" />
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Bulk Import Limit</div>
+                  <div class="setting-desc">จำนวน rows สูงสุดที่ import ได้ในครั้งเดียว</div>
+                </div>
+                <div class="setting-control">
+                  <input type="number" class="form-input" id="rlBulkLimit" min="10" max="50000" value="5000" style="width:110px" />
+                </div>
+              </div>
+            </div>
+            <div class="settings-group">
+              <div class="settings-group-title">Sync Engine</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Sync Interval (วินาที)</div>
+                  <div class="setting-desc">ความถี่ในการ sync mapping rules อัตโนมัติ</div>
+                </div>
+                <div class="setting-control">
+                  <input type="number" class="form-input" id="rlSyncInterval" min="30" max="86400" value="300" style="width:110px" />
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Max Retry per Rule</div>
+                  <div class="setting-desc">จำนวนครั้งที่ retry เมื่อ sync ล้มเหลว</div>
+                </div>
+                <div class="setting-control">
+                  <input type="number" class="form-input" id="rlMaxRetry" min="0" max="10" value="3" style="width:110px" />
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:20px;display:flex;justify-content:flex-end">
+              <button class="btn btn-primary btn-sm" onclick="saveRateLimitSettings()">บันทึกการตั้งค่า</button>
             </div>
           </div>
         </div>
@@ -1026,94 +1168,6 @@
   </div>
 </div>
 
-<div class="modal-overlay hidden" id="aiModal">
-  <div class="modal modal-lg">
-    <div class="modal-header">
-      <div class="modal-title">✦ AI Mapping Generator</div>
-      <button class="modal-close" onclick="closeModal('aiModal')">✕</button>
-    </div>
-    <div class="modal-body">
-
-      <!-- Step 1: Config -->
-      <div id="aiStep1">
-        <div class="ai-intro">
-          <div class="ai-intro-icon">✦</div>
-          <div class="ai-intro-text">
-            <div class="ai-intro-title">Generate mappings with Claude AI</div>
-            <div class="ai-intro-desc">เลือกคู่ database แล้ว Claude จะ suggest type mappings ให้อัตโนมัติ — ตรวจสอบและ approve ก่อน save</div>
-          </div>
-        </div>
-        <div class="form-grid" style="margin-top:24px">
-          <div class="form-field">
-            <label class="form-label">Source Database <span class="required">*</span></label>
-            <select class="form-select" id="aiSrcDb">
-              <option value="">— กำลังโหลด… —</option>
-            </select>
-          </div>
-          <div class="form-field">
-            <label class="form-label">Destination Database <span class="required">*</span></label>
-            <select class="form-select" id="aiDestDb">
-              <option value="">— กำลังโหลด… —</option>
-            </select>
-          </div>
-          <div class="form-field full">
-            <label class="form-label">Context เพิ่มเติม (optional)</label>
-            <textarea class="form-textarea" id="aiContext"
-              placeholder="เช่น เน้น temporal types, รวม COLLATE handling, skip deprecated types…"
-              rows="3"></textarea>
-          </div>
-        </div>
-        <div id="aiDbLoadError" class="hidden" style="color:var(--danger,#ef4444);font-size:.85rem;margin-top:8px"></div>
-      </div>
-
-      <!-- Step 2: Streaming thinking -->
-      <div id="aiStep2" class="hidden">
-        <div class="ai-thinking-wrap">
-          <div class="ai-thinking-dots"><span></span><span></span><span></span></div>
-          <div id="aiThinkingLabel" class="ai-thinking-label">Claude กำลัง generate mappings…</div>
-        </div>
-        <div class="ai-stream-box" id="aiStreamBox"></div>
-      </div>
-
-      <!-- Step 3: Review -->
-      <div id="aiStep3" class="hidden">
-        <div class="review-toolbar">
-          <div class="review-stats">
-            <span class="review-stat"><span class="dot success"></span><span id="rApproved">0</span> approved</span>
-            <span class="review-stat"><span class="dot error"></span><span id="rRejected">0</span> rejected</span>
-            <span class="review-stat"><span class="dot muted"></span><span id="rPending">0</span> pending</span>
-          </div>
-          <div class="review-batch">
-            <button class="btn btn-ghost btn-sm" onclick="batchApprove()">✓ Approve All</button>
-            <button class="btn btn-ghost btn-sm" onclick="batchReject()">✕ Reject All</button>
-          </div>
-        </div>
-        <div class="review-table-wrap">
-          <table class="data-table review-table">
-            <thead>
-              <tr>
-                <th>Raw Type</th>
-                <th>Source Type</th>
-                <th>Logical Type</th>
-                <th>Master Type</th>
-                <th>Final Type</th>
-                <th>Confidence</th>
-                <th>Decision</th>
-              </tr>
-            </thead>
-            <tbody id="reviewBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" id="aiCancelBtn" onclick="aiModalClose()">Cancel</button>
-      <button class="btn btn-accent" id="aiGenerateBtn" onclick="runAIGenerate()">✦ Generate</button>
-      <button class="btn btn-primary hidden" id="aiSaveBtn" onclick="saveApproved()">💾 Save Approved</button>
-    </div>
-  </div>
-</div>
 
 <div class="modal-overlay hidden" id="dbModal">
   <div class="modal">
@@ -1272,7 +1326,29 @@ let lockedUntil    = null;
   if (token && raw) {
     try {
       const data = JSON.parse(raw);
-      if (data.expiry > Date.now()) { mountApp(data); return; }
+      if (data.expiry > Date.now()) {
+        // verify role จาก API ทุกครั้งที่ reload — ไม่เชื่อ cache ใน localStorage
+        const apiBase = typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000';
+        fetch(`${apiBase}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        })
+          .then(r => r.json())
+          .then(json => {
+            data.role = json.data?.role || 'viewer';
+            const storage = localStorage.getItem('ba_token') ? localStorage : sessionStorage;
+            storage.setItem('ba_session', JSON.stringify(data));
+            mountApp(data);
+          })
+          .catch(() => {
+            // token หมดอายุหรือ API ไม่ตอบ — logout
+            localStorage.removeItem('ba_token');
+            localStorage.removeItem('ba_session');
+            sessionStorage.removeItem('ba_token');
+            sessionStorage.removeItem('ba_session');
+            document.body.classList.add('logged-out');
+          });
+        return;
+      }
     } catch(_) {}
     localStorage.removeItem('ba_token');
     localStorage.removeItem('ba_session');
@@ -1371,20 +1447,31 @@ async function doLogin() {
     if (!res.ok) throw new Error(json.detail || json.message || 'Invalid credentials');
 
     const token = json.data.access_token;
+
+    // บันทึก token ก่อน เพื่อให้ fetch /me ได้
+    if (remember) localStorage.setItem('ba_token', token);
+    else          sessionStorage.setItem('ba_token', token);
+
+    // ดึง role จริงจาก /api/auth/me — ไม่ hardcode
+    let realRole = 'viewer';
+    try {
+      const apiBase = typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000';
+      const meRes  = await fetch(`${apiBase}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      const meJson = await meRes.json();
+      realRole = meJson.data?.role || 'viewer';
+    } catch { /* fallback viewer */ }
+
     const sessionData = {
       username,
-      role:   'Admin',
+      role:   realRole,
       expiry: Date.now() + (remember ? 7*24*60*60*1000 : 8*60*60*1000),
     };
-    if (remember) {
-      localStorage.setItem('ba_token',   token);
-      localStorage.setItem('ba_session', JSON.stringify(sessionData));
-    } else {
-      sessionStorage.setItem('ba_token',   token);
-      sessionStorage.setItem('ba_session', JSON.stringify(sessionData));
-    }
+    if (remember) localStorage.setItem('ba_session', JSON.stringify(sessionData));
+    else          sessionStorage.setItem('ba_session', JSON.stringify(sessionData));
 
-    await registerLoginSession(username, token);
+    await registerLoginSession(username, token, realRole);
 
     failedAttempts = 0;
     document.getElementById('loginAttempts').textContent = '';
@@ -1421,12 +1508,12 @@ async function doLogin() {
   }
 }
 
-async function registerLoginSession(username, token) {
+async function registerLoginSession(username, token, role = 'viewer') {
   const sessionId = `auth-${username}`;
   const payload = {
     id: sessionId,
     user: username,
-    role: username === 'admin' ? 'admin' : 'user',
+    role: role,
     db: 'admin-console',
     tables: 0,
     ttl_minutes: 60,
@@ -1487,6 +1574,14 @@ function mountApp(session) {
 }
 
 window.doLogout = async function() {
+  // ปิด WebSocket presence ก่อน — หยุด auto-reconnect
+  if (typeof presenceWs !== 'undefined' && presenceWs) {
+    presenceWs.onclose = null;
+    presenceWs.close();
+    presenceWs = null;
+  }
+  if (typeof stopPresencePing === 'function') stopPresencePing();
+  if (typeof _currentRole !== 'undefined') _currentRole = 'viewer';
   const token = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
   if (token) {
     try {

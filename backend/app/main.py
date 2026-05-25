@@ -40,10 +40,49 @@ app.add_middleware(
 app.add_middleware(LoggingMiddleware)
 
 
+async def _seed_env_admin() -> None:
+    """
+    Ensure the env superadmin (ADMIN_USERNAME) has a real record in admin_users.
+    - ถ้ายังไม่มี → insert ใหม่ด้วย role='admin'
+    - ถ้ามีแล้ว → sync password ให้ตรงกับ .env เสมอ (เผื่อเปลี่ยน password ใน .env)
+    """
+    from sqlalchemy import select
+    from app.db.database import AsyncSessionLocal
+    from app.db.models import AdminUser
+    from app.core.security import get_password_hash
+    from datetime import datetime, timezone
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(AdminUser).where(AdminUser.username == settings.ADMIN_USERNAME)
+        )
+        user = result.scalar_one_or_none()
+        hashed = get_password_hash(settings.ADMIN_PASSWORD)
+
+        if user is None:
+            db.add(AdminUser(
+                username     = settings.ADMIN_USERNAME,
+                hashed_pw    = hashed,
+                role         = "admin",
+                display_name = "Superadmin",
+                is_active    = True,
+                created_at   = datetime.now(timezone.utc),
+            ))
+            logger.info("Seeded env superadmin '%s' into admin_users", settings.ADMIN_USERNAME)
+        else:
+            # sync password ทุกครั้งที่ restart เผื่อ .env เปลี่ยน
+            user.hashed_pw = hashed
+            user.role      = "admin"   # ป้องกันไม่ให้ถูก downgrade
+            logger.info("Synced env superadmin '%s' password/role", settings.ADMIN_USERNAME)
+
+        await db.commit()
+
+
 @app.on_event("startup")
 async def on_startup():
     await init_db()
     logger.info("Database tables initialized")
+    await _seed_env_admin()
 
     # Presence heartbeat monitor
     asyncio.create_task(_evict_stale())

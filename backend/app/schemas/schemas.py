@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Any, Optional
 
 
@@ -15,6 +15,12 @@ class APIResponse(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, v: str) -> str:
+        # ต้องตรงกับ UserCreate.clean_username — strip + lowercase
+        return v.strip().lower()
 
 
 class TokenResponse(BaseModel):

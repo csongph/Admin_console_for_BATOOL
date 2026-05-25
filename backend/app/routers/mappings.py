@@ -10,7 +10,6 @@ routers/mappings.py
   6. backward compatible
 """
 import logging
-import httpx
 from typing import Optional
 from datetime import datetime, date
 
@@ -343,110 +342,7 @@ async def bulk_import_mappings(
 
 # ── AI Generate ──────────────────────────────────────────────────────────────
 
-class AIGenerateRequest(BaseModel):
-    src_db:  str
-    dest_db: str
-    context: str = ""
 
-
-@router.post("/mappings/ai-generate", response_model=APIResponse)
-async def ai_generate_mappings(
-    body:         AIGenerateRequest,
-    current_user: dict        = Depends(get_current_user),
-):
-    """
-    เรียก Claude API จาก backend เพื่อ generate type mappings
-    Returns: { mappings: [...] }
-    """
-    if not settings.ANTHROPIC_API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="ANTHROPIC_API_KEY ยังไม่ได้ตั้งค่าใน .env — ติดต่อ admin",
-        )
-
-    src  = body.src_db.strip()
-    dest = body.dest_db.strip()
-    if not src or not dest:
-        raise HTTPException(status_code=422, detail="src_db และ dest_db ต้องไม่ว่าง")
-    if src == dest:
-        raise HTTPException(status_code=422, detail="src_db และ dest_db ต้องต่างกัน")
-
-    context_line = f"\nAdditional context: {body.context.strip()}" if body.context.strip() else ""
-    prompt = (
-        f"You are a database type mapping expert. "
-        f"Generate a comprehensive list of data type mappings from {src} to {dest}.\n\n"
-        f"For each mapping provide:\n"
-        f"- raw_type: exact source type name in {src}\n"
-        f"- source_type: normalized category (string, integer, float, boolean, date, datetime, timestamp, binary, json, uuid, text, decimal)\n"
-        f"- logical_type: logical/semantic type\n"
-        f"- master_type: canonical AVRO/Confluent type (STRING, INT, LONG, FLOAT, DOUBLE, BOOLEAN, BYTES, NULL)\n"
-        f"- final_type: exact destination type name in {dest}\n"
-        f"- confidence: integer 0–100\n"
-        f"{context_line}\n\n"
-        f"Return ONLY a valid JSON array, no markdown, no explanation. "
-        f"Cover all major types for {src}. Aim for 20–40 mappings."
-    )
-
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key":         settings.ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type":      "application/json",
-                },
-                json={
-                    "model":      "claude-sonnet-4-20250514",
-                    "max_tokens": 4096,
-                    "messages":   [{"role": "user", "content": prompt}],
-                },
-            )
-            resp.raise_for_status()
-            result = resp.json()
-    except httpx.HTTPStatusError as e:
-        detail = e.response.json().get("error", {}).get("message", str(e))
-        raise HTTPException(status_code=502, detail=f"Claude API error: {detail}")
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=502, detail=f"ไม่สามารถเชื่อมต่อ Claude API: {str(e)}")
-
-    # Extract text content
-    text = ""
-    for block in result.get("content", []):
-        if block.get("type") == "text":
-            text += block.get("text", "")
-
-    # Parse JSON array from response
-    import re, json
-    match = re.search(r'\[[\s\S]*\]', text)
-    if not match:
-        raise HTTPException(status_code=502, detail="Claude ไม่ได้คืน JSON array — ลองใหม่")
-    try:
-        mappings = json.loads(match.group())
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail="JSON จาก Claude parse ไม่ได้ — ลองใหม่")
-
-    if not isinstance(mappings, list) or len(mappings) == 0:
-        raise HTTPException(status_code=502, detail="Claude คืน mapping เปล่า")
-
-    # Inject src_db / dest_db และ sanitize
-    cleaned = []
-    for r in mappings:
-        if not isinstance(r, dict):
-            continue
-        cleaned.append({
-            "src_db":       src,
-            "raw_type":     str(r.get("raw_type",     "")),
-            "source_type":  str(r.get("source_type",  "")),
-            "logical_type": str(r.get("logical_type", "")),
-            "master_type":  str(r.get("master_type",  "")),
-            "dest_db":      dest,
-            "final_type":   str(r.get("final_type",   "")),
-            "confidence":   int(r.get("confidence",   100)),
-        })
-
-    logger.info("AI generate: src=%s dest=%s rows=%d user=%s", src, dest, len(cleaned), current_user.get("username"))
-    return APIResponse(success=True, message=f"Generated {len(cleaned)} mappings", data={"mappings": cleaned})
 
 
 # ── NEW: Lookup endpoint for dropdown — GET /api/datatype-standard/list ───────

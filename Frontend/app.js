@@ -390,7 +390,7 @@ function renderMappingTable() {
         <td><div class="confidence-bar"><div class="conf-track"><div class="conf-fill" style="width:${m.confidence}%"></div></div><span class="conf-txt">${m.confidence}%</span></div></td>
         <td><span class="badge badge-${m.status}">${m.status}</span></td>
         <td>${m.updated}</td>
-        <td><div class="row-actions"><button class="row-btn" title="Edit" onclick="editMapping(${m.id})">✎</button><button class="row-btn danger" title="Delete" onclick="deleteMapping(${m.id})">✕</button></div></td>
+        <td>${(_currentRole === 'admin' || _currentRole === 'editor') ? `<div class="row-actions"><button class="row-btn" title="Edit" onclick="editMapping(${m.id})">✎</button>${_currentRole === 'admin' ? `<button class="row-btn danger" title="Delete" onclick="deleteMapping(${m.id})">✕</button>` : ''}</div>` : ''}</td>
       </tr>`).join('');
   }
   const countEl = document.getElementById('mappingCount');
@@ -1129,275 +1129,6 @@ function downloadImportTemplate(type) {
   URL.revokeObjectURL(a.href);
 }
 // ════════════════════════════════════════════════════════════
-//  AI MAPPING GENERATOR  (calls Claude API directly)
-// ════════════════════════════════════════════════════════════
-
-let _aiRows      = [];   // parsed suggestions from Claude
-let _aiDecisions = {};   // rowIndex → 'approved' | 'rejected' | 'pending'
-
-// ── Open / Close ─────────────────────────────────────────────────────────────
-
-async function openAIGenerate() {
-  _aiReset();
-  openModal('aiModal');
-  await _aiLoadDatabases();
-}
-
-function aiModalClose() {
-  closeModal('aiModal');
-}
-
-function _aiReset() {
-  _aiRows      = [];
-  _aiDecisions = {};
-
-  _aiShowStep(1);
-  document.getElementById('aiGenerateBtn').classList.remove('hidden');
-  document.getElementById('aiGenerateBtn').disabled = false;
-  document.getElementById('aiSaveBtn').classList.add('hidden');
-  document.getElementById('aiStreamBox').textContent = '';
-  document.getElementById('reviewBody').innerHTML    = '';
-  document.getElementById('aiDbLoadError').classList.add('hidden');
-  _aiUpdateStats();
-}
-
-function _aiShowStep(n) {
-  [1, 2, 3].forEach(i => {
-    const el = document.getElementById('aiStep' + i);
-    if (el) el.classList.toggle('hidden', i !== n);
-  });
-}
-
-// ── Load DB list from API ─────────────────────────────────────────────────────
-
-async function _aiLoadDatabases() {
-  const srcSel  = document.getElementById('aiSrcDb');
-  const destSel = document.getElementById('aiDestDb');
-  const errEl   = document.getElementById('aiDbLoadError');
-
-  srcSel.innerHTML  = '<option value="">— กำลังโหลด… —</option>';
-  destSel.innerHTML = '<option value="">— กำลังโหลด… —</option>';
-
-  try {
-    const res = await apiCall('/api/database-records/enabled?limit=200');
-    const dbs = (res.data || []).map(d => d.key).filter(Boolean);
-
-    const makeOptions = () => ['<option value="">— เลือก database —</option>',
-      ...dbs.map(k => `<option value="${k}">${k}</option>`)
-    ].join('');
-
-    srcSel.innerHTML  = makeOptions();
-    destSel.innerHTML = makeOptions();
-  } catch (e) {
-    errEl.textContent = 'โหลด database list ไม่ได้: ' + e.message;
-    errEl.classList.remove('hidden');
-    // Fallback hardcoded
-    const fallback = ['postgresql','mysql','sqlserver','oracle','db2','snowflake','confluent','kafka'];
-    const opts = ['<option value="">— เลือก database —</option>',
-      ...fallback.map(k => `<option value="${k}">${k}</option>`)
-    ].join('');
-    srcSel.innerHTML  = opts;
-    destSel.innerHTML = opts;
-  }
-}
-
-// ── Generate ──────────────────────────────────────────────────────────────────
-
-async function runAIGenerate() {
-  const srcDb   = document.getElementById('aiSrcDb').value.trim();
-  const destDb  = document.getElementById('aiDestDb').value.trim();
-  const context = document.getElementById('aiContext').value.trim();
-
-  if (!srcDb || !destDb) {
-    showToast('กรุณาเลือก Source และ Destination database', 'error');
-    return;
-  }
-  if (srcDb === destDb) {
-    showToast('Source และ Destination ต้องเป็นคนละ database', 'error');
-    return;
-  }
-
-  const genBtn = document.getElementById('aiGenerateBtn');
-  genBtn.disabled  = true;
-  genBtn.innerHTML = '<span class="spinner-sm"></span> Generating…';
-
-  _aiShowStep(2);
-  document.getElementById('aiThinkingLabel').textContent =
-    `Claude กำลัง generate type mappings สำหรับ ${srcDb} → ${destDb}…`;
-  document.getElementById('aiStreamBox').textContent = '';
-
-  const prompt = _aiBuiltPrompt(srcDb, destDb, context);
-
-  try {
-    const rows = await _aiCallClaude(prompt, srcDb, destDb);
-    _aiRows      = rows;
-    _aiDecisions = {};
-    rows.forEach((_, i) => { _aiDecisions[i] = 'pending'; });
-
-    _aiRenderReviewTable(srcDb, destDb);
-    _aiShowStep(3);
-    document.getElementById('aiSaveBtn').classList.remove('hidden');
-    genBtn.classList.add('hidden');
-    showToast(`Claude แนะนำ ${rows.length} mapping(s) — ตรวจสอบก่อน save`, 'success');
-  } catch (e) {
-    showToast('AI Generate ล้มเหลว: ' + e.message, 'error');
-    _aiShowStep(1);
-    genBtn.disabled  = false;
-    genBtn.innerHTML = '✦ Generate';
-  }
-}
-
-// ── Prompt builder ────────────────────────────────────────────────────────────
-
-function _aiBuiltPrompt(srcDb, destDb, context) {
-  return `You are a database type mapping expert. Generate a comprehensive list of data type mappings from ${srcDb} to ${destDb}.
-
-For each mapping, provide:
-- raw_type: the exact source type name in ${srcDb}
-- source_type: normalized source category (string, integer, float, boolean, date, datetime, timestamp, binary, json, array, uuid, text, decimal, etc.)
-- logical_type: the logical/semantic type (same as source_type but may differ for special cases)
-- master_type: the canonical AVRO/Confluent standard type (STRING, INT, LONG, FLOAT, DOUBLE, BOOLEAN, BYTES, NULL, ARRAY, MAP, RECORD, ENUM, FIXED, etc.)
-- final_type: the exact destination type name in ${destDb}
-- confidence: integer 0-100 (how certain this mapping is — 100 = industry standard, 70-99 = common, below 70 = ambiguous)
-
-${context ? `Additional context: ${context}\n` : ''}
-
-Return ONLY a valid JSON array — no markdown, no explanation, no preamble. Example format:
-[
-  {"raw_type":"varchar","source_type":"string","logical_type":"string","master_type":"STRING","final_type":"text","confidence":100},
-  {"raw_type":"int","source_type":"integer","logical_type":"integer","master_type":"INT","final_type":"integer","confidence":100}
-]
-
-Cover all major types for ${srcDb} including: numeric, string/text, date/time, boolean, binary, and any ${srcDb}-specific types. Aim for 20-40 mappings.`;
-}
-
-// ── Backend proxy call (key อยู่ที่ server — ปลอดภัย) ────────────────────────
-
-async function _aiCallClaude(prompt, srcDb, destDb) {
-  const streamBox = document.getElementById('aiStreamBox');
-  streamBox.textContent = 'กำลังเรียก Claude API ผ่าน backend…';
-
-  const context = document.getElementById('aiContext').value.trim();
-
-  const res = await apiCall('/api/mappings/ai-generate', {
-    method: 'POST',
-    body: JSON.stringify({ src_db: srcDb, dest_db: destDb, context }),
-  });
-
-  // แสดง raw output ใน stream box เพื่อ debug
-  const mappings = res.data?.mappings || [];
-  streamBox.textContent = JSON.stringify(mappings, null, 2);
-
-  if (!mappings.length) throw new Error('Claude คืน mapping เปล่า');
-  return mappings;
-}
-
-// ── Review table ──────────────────────────────────────────────────────────────
-
-function _aiRenderReviewTable(srcDb, destDb) {
-  const tbody = document.getElementById('reviewBody');
-  tbody.innerHTML = _aiRows.map((row, i) => `
-    <tr id="aiRow_${i}" class="ai-review-row ai-row-pending">
-      <td><code>${_esc(row.raw_type)}</code></td>
-      <td>${_esc(row.source_type || '')}</td>
-      <td>${_esc(row.logical_type || '')}</td>
-      <td>${_esc(row.master_type || '')}</td>
-      <td>${_esc(row.final_type || '')}</td>
-      <td>
-        <div class="conf-bar-wrap">
-          <div class="conf-bar" style="width:${row.confidence || 0}%"></div>
-          <span class="conf-label">${row.confidence ?? '?'}%</span>
-        </div>
-      </td>
-      <td>
-        <div class="decision-btns">
-          <button class="btn-decision approve" onclick="aiDecide(${i},'approved')" title="Approve">✓</button>
-          <button class="btn-decision reject"  onclick="aiDecide(${i},'rejected')" title="Reject">✕</button>
-        </div>
-      </td>
-    </tr>`).join('');
-  _aiUpdateStats();
-}
-
-function _esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function aiDecide(i, decision) {
-  _aiDecisions[i] = decision;
-  const row = document.getElementById('aiRow_' + i);
-  if (row) {
-    row.classList.remove('ai-row-pending','ai-row-approved','ai-row-rejected');
-    row.classList.add('ai-row-' + decision);
-  }
-  // update button active state
-  const btns = row?.querySelectorAll('.btn-decision');
-  btns?.forEach(b => b.classList.remove('active'));
-  if (decision === 'approved') row?.querySelector('.approve')?.classList.add('active');
-  if (decision === 'rejected') row?.querySelector('.reject')?.classList.add('active');
-
-  _aiUpdateStats();
-}
-
-function batchApprove() {
-  _aiRows.forEach((_, i) => aiDecide(i, 'approved'));
-}
-function batchReject() {
-  _aiRows.forEach((_, i) => aiDecide(i, 'rejected'));
-}
-
-function _aiUpdateStats() {
-  const vals   = Object.values(_aiDecisions);
-  const counts = { approved: 0, rejected: 0, pending: 0 };
-  vals.forEach(v => { if (counts[v] !== undefined) counts[v]++; });
-  const pending = _aiRows.length - vals.length;
-  document.getElementById('rApproved').textContent = counts.approved;
-  document.getElementById('rRejected').textContent = counts.rejected;
-  document.getElementById('rPending').textContent  = counts.pending + pending;
-
-  const saveBtn = document.getElementById('aiSaveBtn');
-  if (saveBtn) {
-    const n = counts.approved;
-    saveBtn.textContent = n > 0 ? `💾 Save ${n} Approved` : '💾 Save Approved';
-    saveBtn.disabled    = n === 0;
-  }
-}
-
-// ── Save approved rows ────────────────────────────────────────────────────────
-
-async function saveApproved() {
-  const toSave = _aiRows.filter((_, i) => _aiDecisions[i] === 'approved');
-  if (toSave.length === 0) { showToast('ยังไม่ได้ approve row ใด', 'error'); return; }
-
-  const saveBtn = document.getElementById('aiSaveBtn');
-  saveBtn.disabled  = true;
-  saveBtn.innerHTML = '<span class="spinner-sm"></span> Saving…';
-
-  let ok = 0, fail = 0;
-  for (const row of toSave) {
-    const payload = {
-      src_db:       row.src_db       || '',
-      raw_type:     row.raw_type     || '',
-      source_type:  row.source_type  || '',
-      logical_type: row.logical_type || '',
-      master_type:  row.master_type  || '',
-      dest_db:      row.dest_db      || '',
-      final_type:   row.final_type   || '',
-      confidence:   row.confidence   ?? 100,
-      status:       'active',
-    };
-    try {
-      await apiCall('/api/mappings', { method: 'POST', body: JSON.stringify(payload) });
-      ok++;
-    } catch { fail++; }
-  }
-
-  showToast(`บันทึกแล้ว ${ok} mapping(s)${fail ? ` — ล้มเหลว ${fail}` : ''}`, fail ? 'error' : 'success');
-  await fetchMappings();
-  closeModal('aiModal');
-}
-
-// ════════════════════════════════════════════════════════════
 //  DATABASE REGISTRY
 // ════════════════════════════════════════════════════════════
 
@@ -1819,10 +1550,8 @@ function switchSettings(section, btn) {
   document.querySelectorAll('.settings-section').forEach(s => s.classList.add('hidden'));
   const target = document.getElementById('settings-' + section);
   if (target) target.classList.remove('hidden');
-  // โหลด users เมื่อเปิด tab
-  if (section === 'users') {
-    fetchMyRole().then(() => fetchUsers());
-  }
+  if (section === 'users')     { fetchMyRole().then(() => fetchUsers()); }
+  if (section === 'security' || section === 'ratelimit') { _loadSettingsValues(); }
 }
 
 function saveSettings() { showToast('Settings saved successfully', 'success'); }
@@ -1836,6 +1565,82 @@ function rotateApiKey() {
   input.value = key; input.type = 'text';
   showToast('API key rotated — remember to update your clients', 'warn');
 }
+
+// ── Security Settings ─────────────────────────────────────────────────────────
+
+function saveSecuritySettings() {
+  const timeout    = parseInt(document.getElementById('secSessionTimeout')?.value) || 60;
+  const minPw      = parseInt(document.getElementById('secMinPwLen')?.value) || 6;
+  const maxAttempt = parseInt(document.getElementById('secMaxAttempts')?.value) || 5;
+  localStorage.setItem('sec_session_timeout', timeout);
+  localStorage.setItem('sec_min_pw_len',      minPw);
+  localStorage.setItem('sec_max_attempts',    maxAttempt);
+  showToast('บันทึกการตั้งค่า Security แล้ว', 'success');
+}
+
+async function cleanExpiredSessions() {
+  try {
+    const data = await apiCall('/api/sessions', { method: 'DELETE' });
+    const removed = data.data?.removed ?? 0;
+    showToast(`ล้าง ${removed} expired session(s) แล้ว`, removed ? 'success' : 'info');
+    await fetchSessions();
+  } catch (e) {
+    showToast('Cleanup failed: ' + e.message, 'error');
+  }
+}
+
+async function revokeAllSessions() {
+  if (!confirm('ยืนยันการยกเลิก session ทั้งหมด? ผู้ใช้ทุกคนจะถูก logout')) return;
+  try {
+    const sessions = await apiCall('/api/sessions');
+    const list     = sessions.data?.sessions || [];
+    const myToken  = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
+    let revoked = 0;
+    for (const s of list) {
+      if (s.id && !s.id.startsWith('auth-')) continue; // skip non-auth sessions
+      try {
+        await apiCall(`/api/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' });
+        revoked++;
+      } catch { /* ignore individual failures */ }
+    }
+    showToast(`ยกเลิก ${revoked} session(s) แล้ว`, 'warn');
+    await fetchSessions();
+  } catch (e) {
+    showToast('Revoke failed: ' + e.message, 'error');
+  }
+}
+
+// ── Rate Limit Settings ───────────────────────────────────────────────────────
+
+function saveRateLimitSettings() {
+  const maxReq   = parseInt(document.getElementById('rlMaxReqMin')?.value) || 300;
+  const bulk     = parseInt(document.getElementById('rlBulkLimit')?.value) || 5000;
+  const interval = parseInt(document.getElementById('rlSyncInterval')?.value) || 300;
+  const retry    = parseInt(document.getElementById('rlMaxRetry')?.value) || 3;
+  localStorage.setItem('rl_max_req_min',    maxReq);
+  localStorage.setItem('rl_bulk_limit',     bulk);
+  localStorage.setItem('rl_sync_interval',  interval);
+  localStorage.setItem('rl_max_retry',      retry);
+  showToast('บันทึกการตั้งค่า Rate Limiting แล้ว', 'success');
+}
+
+function _loadSettingsValues() {
+  const si = document.getElementById('secSessionTimeout');
+  const sp = document.getElementById('secMinPwLen');
+  const sa = document.getElementById('secMaxAttempts');
+  const rr = document.getElementById('rlMaxReqMin');
+  const rb = document.getElementById('rlBulkLimit');
+  const ri = document.getElementById('rlSyncInterval');
+  const rm = document.getElementById('rlMaxRetry');
+  if (si) si.value = localStorage.getItem('sec_session_timeout') || 60;
+  if (sp) sp.value = localStorage.getItem('sec_min_pw_len') || 6;
+  if (sa) sa.value = localStorage.getItem('sec_max_attempts') || 5;
+  if (rr) rr.value = localStorage.getItem('rl_max_req_min') || 300;
+  if (rb) rb.value = localStorage.getItem('rl_bulk_limit') || 5000;
+  if (ri) ri.value = localStorage.getItem('rl_sync_interval') || 300;
+  if (rm) rm.value = localStorage.getItem('rl_max_retry') || 3;
+}
+
 
 // ════════════════════════════════════════════════════════════
 //  GLOBAL SEARCH
@@ -1889,13 +1694,16 @@ async function triggerSync() {
 // ════════════════════════════════════════════════════════════
 
 function init() {
-  fetchMappings();
-  fetchDatabases();
-  fetchSessions();
-  fetchLogs();
-  refreshDashboard();
-  connectPresence();
-  fetchActivities();
+  // fetch role จริงก่อนเสมอ เพื่อให้ทุก permission check ถูกต้อง
+  fetchMyRole().then(() => {
+    fetchMappings();
+    fetchDatabases();
+    fetchSessions();
+    fetchLogs();
+    refreshDashboard();
+    connectPresence();
+    fetchActivities();
+  });
 }
 // ════════════════════════════════════════════════════════════
 //  UPDATE ACTIVITY
@@ -2106,7 +1914,23 @@ async function fetchMyRole() {
   try {
     const res = await apiCall('/api/auth/me');
     _currentRole = res.data?.role || 'viewer';
+    _applyMappingRoleUI();
   } catch (_) { /* ignore */ }
+}
+
+function _applyMappingRoleUI() {
+  const canEdit  = _currentRole === 'admin' || _currentRole === 'editor';
+  const isAdmin  = _currentRole === 'admin';
+  // Mapping page header buttons
+  const btnBulk  = document.getElementById('btnBulkImport');
+  const btnAdd   = document.getElementById('btnAddRule');
+  if (btnBulk) btnBulk.style.display = canEdit ? '' : 'none';
+  if (btnAdd)  btnAdd.style.display  = canEdit ? '' : 'none';
+  // Bulk action bar
+  const bulkApproveBtn = document.querySelector('[onclick="bulkApprove()"]');
+  const bulkDeleteBtn  = document.querySelector('[onclick="bulkDelete()"]');
+  if (bulkApproveBtn) bulkApproveBtn.style.display = canEdit ? '' : 'none';
+  if (bulkDeleteBtn)  bulkDeleteBtn.style.display  = isAdmin ? '' : 'none';
 }
 
 // ── โหลด users (ทุกคนดูได้ แต่แก้ไขได้เฉพาะ admin) ─────────────────────────
@@ -2344,5 +2168,3 @@ function toggleFieldPw(inputId, iconEl) {
   inp.type   = hide ? 'text' : 'password';
   if (iconEl) iconEl.style.color = hide ? 'var(--accent)' : 'var(--text3)';
 }
-
-// ── Hook เข้า switchSettings — handled directly in original function above ──

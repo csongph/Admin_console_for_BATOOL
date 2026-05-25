@@ -33,7 +33,7 @@ async def _upsert_auth_session(db: AsyncSession, username: str) -> None:
         db.add(SessionRecord(
             id=session_id,
             user=username,
-            role="admin" if username == "admin" else "user",
+            role="admin" if username == settings.ADMIN_USERNAME else "user",
             db="admin-console",
             tables=0,
             ttl_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
