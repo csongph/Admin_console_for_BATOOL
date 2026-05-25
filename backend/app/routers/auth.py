@@ -45,13 +45,15 @@ async def _upsert_auth_session(db: AsyncSession, username: str) -> None:
 
 @router.post("/login", response_model=APIResponse)
 async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
-    if not auth_service.authenticate_user(request.username, request.password):
+    ok = await auth_service.authenticate_user(request.username, request.password, db)
+    if not ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
     token_data = auth_service.generate_token(request.username)
     await _upsert_auth_session(db, request.username)
+    await auth_service.update_last_login(request.username, db)
     return APIResponse(success=True, message="Login successful", data=token_data)
 
 
@@ -66,8 +68,17 @@ async def refresh_token(
 
 
 @router.get("/me", response_model=APIResponse)
-async def get_me(current_user: dict = Depends(get_current_user)):
-    return APIResponse(success=True, message="OK", data=current_user)
+async def get_me(
+    current_user: dict      = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import select
+    from app.db.models import AdminUser
+    username = current_user["username"]
+    result   = await db.execute(select(AdminUser).where(AdminUser.username == username))
+    user_rec = result.scalar_one_or_none()
+    role = user_rec.role if user_rec else ("admin" if username == settings.ADMIN_USERNAME else "viewer")
+    return APIResponse(success=True, message="OK", data={**current_user, "role": role})
 
 
 @router.post("/logout", response_model=APIResponse)

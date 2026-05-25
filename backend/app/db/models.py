@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, date
 from typing import Optional
-from sqlalchemy import Integer, String, Boolean, DateTime, Date, UniqueConstraint, Index
+from sqlalchemy import Integer, String, Boolean, DateTime, Date, UniqueConstraint, Index, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
@@ -145,3 +145,71 @@ class SystemSetting(Base):
 
     key:   Mapped[str] = mapped_column(String(64),  primary_key=True)
     value: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+
+# ─────────────────────────────────────────────────────────────────────────────
+class UpdateActivity(Base):
+    """บันทึกทุกครั้งที่ผู้ใช้ทำการ create / update / delete mapping rules"""
+    __tablename__ = "update_activities"
+    __table_args__ = (
+        Index("ix_activity_user",      "username"),
+        Index("ix_activity_action",    "action"),
+        Index("ix_activity_created_at","created_at"),
+    )
+
+    id:          Mapped[int]           = mapped_column(Integer,  primary_key=True, autoincrement=True)
+    username:    Mapped[str]           = mapped_column(String(128), nullable=False)
+    action:      Mapped[str]           = mapped_column(String(32),  nullable=False)   # create | update | delete | bulk_import
+    target_type: Mapped[str]           = mapped_column(String(64),  default="mapping") # mapping | database | session
+    target_id:   Mapped[Optional[str]] = mapped_column(String(64),  nullable=True)
+    summary:     Mapped[str]           = mapped_column(String(256), default="")
+    detail:      Mapped[Optional[str]] = mapped_column(Text,        nullable=True)    # JSON snapshot ของข้อมูลที่เปลี่ยน
+    created_at:  Mapped[datetime]      = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id":          self.id,
+            "username":    self.username,
+            "action":      self.action,
+            "target_type": self.target_type,
+            "target_id":   self.target_id,
+            "summary":     self.summary,
+            "detail":      self.detail,
+            "created_at":  self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+class AdminUser(Base):
+    """ผู้ใช้งานระบบ Admin Console — สร้าง/จัดการโดย admin"""
+    __tablename__ = "admin_users"
+    __table_args__ = (
+        Index("ix_admin_user_username", "username", unique=True),
+    )
+
+    id:           Mapped[int]           = mapped_column(Integer,  primary_key=True, autoincrement=True)
+    username:     Mapped[str]           = mapped_column(String(128), nullable=False, unique=True)
+    hashed_pw:    Mapped[str]           = mapped_column(String(256), nullable=False)
+    role:         Mapped[str]           = mapped_column(String(32),  default="viewer")  # admin | editor | viewer
+    display_name: Mapped[str]           = mapped_column(String(128), default="")
+    is_active:    Mapped[bool]          = mapped_column(Boolean,     default=True)
+    created_at:   Mapped[datetime]      = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    last_login:   Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id":           self.id,
+            "username":     self.username,
+            "role":         self.role,
+            "display_name": self.display_name,
+            "is_active":    self.is_active,
+            "created_at":   self.created_at.isoformat() if self.created_at else None,
+            "last_login":   self.last_login.isoformat() if self.last_login else None,
+        }

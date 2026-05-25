@@ -157,7 +157,7 @@ function navigate(page) {
 
   const bcPage = document.getElementById('bcPage');
   if (bcPage) {
-    const labels = { dashboard:'Dashboard', mapping:'Mapping Manager', databases:'Database Registry', sessions:'Session Monitor', logs:'Log Viewer', settings:'Settings' };
+    const labels = { dashboard:'Dashboard', mapping:'Mapping Manager', databases:'Database Registry', sessions:'Session Monitor', logs:'Log Viewer', settings:'Settings', activity:'Update Activity' };
     bcPage.textContent = labels[page] || page;
   }
   if (isMobile()) closeMobileSidebar();
@@ -1819,6 +1819,10 @@ function switchSettings(section, btn) {
   document.querySelectorAll('.settings-section').forEach(s => s.classList.add('hidden'));
   const target = document.getElementById('settings-' + section);
   if (target) target.classList.remove('hidden');
+  // โหลด users เมื่อเปิด tab
+  if (section === 'users') {
+    fetchMyRole().then(() => fetchUsers());
+  }
 }
 
 function saveSettings() { showToast('Settings saved successfully', 'success'); }
@@ -1891,4 +1895,454 @@ function init() {
   fetchLogs();
   refreshDashboard();
   connectPresence();
+  fetchActivities();
 }
+// ════════════════════════════════════════════════════════════
+//  UPDATE ACTIVITY
+// ════════════════════════════════════════════════════════════
+
+let activityData   = [];
+let activityPage   = 1;
+const ACTIVITY_PAGE_SIZE = 15;
+
+// ── action badge color ────────────────────────────────────────
+function actionBadgeClass(action) {
+  return { create: 'success', update: 'warning', delete: 'error', bulk_import: 'info' }[action] || 'draft';
+}
+
+function actionLabel(action) {
+  return { create: '➕ Create', update: '✏ Update', delete: '✕ Delete', bulk_import: '⬆ Bulk' }[action] || action;
+}
+
+function formatActivityDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    const date = d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+    const time = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return `<span style="display:block;font-size:12px;font-weight:600">${date}</span><span style="display:block;font-size:11px;color:var(--text3)">${time}</span>`;
+  } catch { return iso; }
+}
+
+async function fetchActivities() {
+  try {
+    const res = await apiCall('/api/activities?limit=200');
+    activityData  = (res.data?.activities || []);
+    const badge   = document.getElementById('activityNavBadge');
+    if (badge) { badge.textContent = activityData.length; badge.style.display = activityData.length ? '' : 'none'; }
+    activityPage  = 1;
+    filterActivities();
+  } catch (e) {
+    showToast('ไม่สามารถโหลด Activity: ' + e.message, 'error');
+  }
+}
+
+function getFilteredActivities() {
+  const user   = (document.getElementById('activitySearchUser')?.value  || '').toLowerCase();
+  const action = document.getElementById('activityFilterAction')?.value || '';
+  const type   = document.getElementById('activityFilterType')?.value   || '';
+  return activityData.filter(a =>
+    (!user   || (a.username || '').toLowerCase().includes(user)) &&
+    (!action || a.action      === action) &&
+    (!type   || a.target_type === type)
+  );
+}
+
+function filterActivities() {
+  activityPage = 1;
+  renderActivityTable();
+}
+
+function renderActivityTable() {
+  const filtered   = getFilteredActivities();
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ACTIVITY_PAGE_SIZE));
+  if (activityPage > totalPages) activityPage = 1;
+  const start = (activityPage - 1) * ACTIVITY_PAGE_SIZE;
+  const page  = filtered.slice(start, start + ACTIVITY_PAGE_SIZE);
+
+  const tbody = document.getElementById('activityBody');
+  if (!tbody) return;
+
+  const countEl = document.getElementById('activityCount');
+  if (countEl) countEl.textContent = `แสดง ${filtered.length} รายการ`;
+
+  if (!page.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">ไม่พบข้อมูล Activity</td></tr>`;
+  } else {
+    tbody.innerHTML = page.map(a => `
+      <tr style="cursor:default">
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${a.id}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${(a.username||'?')[0].toUpperCase()}</div>
+            <span style="font-weight:500;font-size:13px">${a.username || '—'}</span>
+          </div>
+        </td>
+        <td><span class="badge badge-${actionBadgeClass(a.action)}">${actionLabel(a.action)}</span></td>
+        <td style="font-size:12px;color:var(--text3)">${a.target_type || '—'}</td>
+        <td style="font-family:var(--mono);font-size:11px">${a.target_id ?? '—'}</td>
+        <td style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(a.summary||'').replace(/"/g,'&quot;')}">${a.summary || '—'}</td>
+        <td>${formatActivityDate(a.created_at)}</td>
+        <td>
+          <button class="row-btn" title="ดูรายละเอียด" onclick="openActivityDetail(${a.id})">🔍</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  // pagination
+  const pag = document.getElementById('activityPagination');
+  if (pag) {
+    let html = `<button class="page-btn" onclick="goActivityPage(${activityPage-1})" ${activityPage===1?'disabled':''}>‹</button>`;
+    for (let i = 1; i <= totalPages; i++) html += `<button class="page-btn ${i===activityPage?'active':''}" onclick="goActivityPage(${i})">${i}</button>`;
+    html += `<button class="page-btn" onclick="goActivityPage(${activityPage+1})" ${activityPage===totalPages?'disabled':''}>›</button>`;
+    pag.innerHTML = html;
+  }
+}
+
+function goActivityPage(p) {
+  const filtered   = getFilteredActivities();
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ACTIVITY_PAGE_SIZE));
+  if (p < 1 || p > totalPages) return;
+  activityPage = p;
+  renderActivityTable();
+}
+
+async function openActivityDetail(id) {
+  const overlay = document.getElementById('activityDetailModal');
+  const body    = document.getElementById('activityModalBody');
+  const title   = document.getElementById('activityModalTitle');
+  if (!overlay || !body) return;
+
+  body.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text3)">กำลังโหลด…</div>`;
+  overlay.classList.remove('hidden');
+
+  try {
+    const res  = await apiCall(`/api/activities/${id}`);
+    const act  = res.data;
+    title.textContent = `Activity #${act.id} — ${act.username}`;
+
+    const detail = act.detail;
+    let detailHtml = '';
+
+    if (detail && typeof detail === 'object') {
+      // before / after / changes
+      const sections = [];
+      if (detail.before) sections.push({ label: '📷 ก่อนแก้ไข (Before)', data: detail.before, color: '#f87171' });
+      if (detail.after)  sections.push({ label: '✅ หลังแก้ไข (After)',  data: detail.after,  color: '#34d399' });
+      if (detail.changes) sections.push({ label: '✏ ค่าที่เปลี่ยน (Changes)', data: detail.changes, color: 'var(--accent)' });
+      if (detail.imported !== undefined) sections.push({ label: '📊 สรุป Import', data: { imported: detail.imported, skipped: detail.skipped, failed: detail.failed }, color: 'var(--accent)' });
+
+      sections.forEach(sec => {
+        detailHtml += `<div style="margin-bottom:20px">
+          <div style="font-size:12px;font-weight:700;color:${sec.color};margin-bottom:8px;padding:0 24px">${sec.label}</div>
+          <div style="background:var(--bg2);border-radius:8px;margin:0 16px;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse">
+              ${Object.entries(sec.data).map(([k,v]) => `
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:8px 16px;font-size:12px;color:var(--text3);font-family:var(--mono);width:140px;white-space:nowrap">${k}</td>
+                  <td style="padding:8px 16px;font-size:12px;word-break:break-all">${v === null ? '<em style="color:var(--text3)">null</em>' : String(v)}</td>
+                </tr>`).join('')}
+            </table>
+          </div>
+        </div>`;
+      });
+
+      if (!sections.length) {
+        detailHtml = `<div style="padding:0 24px"><pre style="font-size:11px;background:var(--bg2);padding:16px;border-radius:8px;overflow:auto">${JSON.stringify(detail, null, 2)}</pre></div>`;
+      }
+    } else {
+      detailHtml = `<div style="padding:0 24px;font-size:13px;color:var(--text3)">ไม่มีข้อมูลรายละเอียดเพิ่มเติม</div>`;
+    }
+
+    body.innerHTML = `
+      <div style="padding:20px 0 8px">
+        <!-- Meta info -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:0 24px 20px;border-bottom:1px solid var(--border);margin-bottom:20px">
+          <div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">ผู้ใช้งาน</div>
+            <div style="font-weight:600;font-size:14px">${act.username}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Action</div>
+            <span class="badge badge-${actionBadgeClass(act.action)}">${actionLabel(act.action)}</span>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Target</div>
+            <div style="font-size:13px">${act.target_type}${act.target_id ? ' #'+act.target_id : ''}</div>
+          </div>
+          <div style="grid-column:1/-1">
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">สรุป</div>
+            <div style="font-size:13px">${act.summary || '—'}</div>
+          </div>
+          <div style="grid-column:1/-1">
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">วันที่ / เวลา</div>
+            <div style="font-size:13px;font-family:var(--mono)">${act.created_at ? new Date(act.created_at).toLocaleString('th-TH') : '—'}</div>
+          </div>
+        </div>
+        <!-- Detail -->
+        ${detailHtml}
+      </div>`;
+  } catch (e) {
+    body.innerHTML = `<div style="padding:24px;color:var(--error)">โหลดข้อมูลล้มเหลว: ${e.message}</div>`;
+  }
+}
+
+function closeActivityModal() {
+  const overlay = document.getElementById('activityDetailModal');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+// ════════════════════════════════════════════════════════════
+//  USER MANAGEMENT
+// ════════════════════════════════════════════════════════════
+
+let _usersData    = [];      // รายการ users ทั้งหมด
+let _currentRole  = 'viewer'; // role ของผู้ใช้ที่ login
+let _editingUserId = null;   // null = create mode, number = edit mode
+let _resetPwUserId = null;
+
+// ── ดึง role ของตัวเองหลัง login ─────────────────────────────────────────────
+async function fetchMyRole() {
+  try {
+    const res = await apiCall('/api/auth/me');
+    _currentRole = res.data?.role || 'viewer';
+  } catch (_) { /* ignore */ }
+}
+
+// ── โหลด users (ทุกคนดูได้ แต่แก้ไขได้เฉพาะ admin) ─────────────────────────
+async function fetchUsers() {
+  try {
+    const res  = await apiCall('/api/users');
+    _usersData = res.data || [];
+    renderUsersTable();
+    _applyUserAdminUI();
+  } catch (e) {
+    const tbody = document.getElementById('usersBody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--error)">โหลดข้อมูลล้มเหลว: ${e.message}</td></tr>`;
+  }
+}
+
+function _applyUserAdminUI() {
+  const isAdmin = _currentRole === 'admin';
+  const btn     = document.getElementById('btnAddUser');
+  const notice  = document.getElementById('userAdminNotice');
+  const actHdr  = document.getElementById('userActionHeader');
+  if (btn)    { btn.style.display    = isAdmin ? '' : 'none'; }
+  if (notice) { notice.classList[isAdmin ? 'add' : 'remove']('hidden'); notice.classList[!isAdmin ? 'add' : 'remove']('hidden'); }
+  if (actHdr) actHdr.textContent = isAdmin ? 'Actions' : '';
+}
+
+function roleBadgeClass(role) {
+  return { admin: 'success', editor: 'warning', viewer: 'draft' }[role] || 'draft';
+}
+
+function roleLabel(role) {
+  return { admin: '🛡 Admin', editor: '✏ Editor', viewer: '👁 Viewer' }[role] || role;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString('th-TH', { year:'numeric', month:'short', day:'numeric' }); }
+  catch { return iso; }
+}
+
+function renderUsersTable() {
+  const tbody   = document.getElementById('usersBody');
+  if (!tbody) return;
+  const isAdmin = _currentRole === 'admin';
+
+  if (!_usersData.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีผู้ใช้ในระบบ</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = _usersData.map(u => `
+    <tr>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${u.id}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${(u.username||'?')[0].toUpperCase()}</div>
+          <div>
+            <div style="font-weight:600;font-size:13px">${u.username}</div>
+          </div>
+        </div>
+      </td>
+      <td style="font-size:13px;color:var(--text2)">${u.display_name || '—'}</td>
+      <td><span class="badge badge-${roleBadgeClass(u.role)}">${roleLabel(u.role)}</span></td>
+      <td>
+        <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;${u.is_active ? 'color:#34d399' : 'color:var(--text3)'}">
+          ${u.is_active ? '● Active' : '○ Inactive'}
+        </span>
+      </td>
+      <td style="font-size:12px;color:var(--text3)">${fmtDate(u.created_at)}</td>
+      <td style="font-size:12px;color:var(--text3)">${u.last_login ? fmtDate(u.last_login) : '—'}</td>
+      <td>
+        ${isAdmin ? `
+        <div class="row-actions">
+          <button class="row-btn" title="แก้ไข" onclick="openUserModal(${u.id})">✎</button>
+          <button class="row-btn" title="Reset Password" onclick="openResetPwModal(${u.id},'${u.username}')">🔑</button>
+          <button class="row-btn danger" title="ลบ" onclick="deleteUser(${u.id},'${u.username}')">✕</button>
+        </div>` : ''}
+      </td>
+    </tr>`).join('');
+}
+
+// ── Open Create / Edit Modal ──────────────────────────────────────────────────
+function openUserModal(userId = null) {
+  _editingUserId = userId;
+  const overlay = document.getElementById('userModal');
+  const title   = document.getElementById('userModalTitle');
+  const pwRow   = document.getElementById('uPasswordRow');
+  const actRow  = document.getElementById('uActiveRow');
+  if (!overlay) return;
+
+  // reset fields
+  document.getElementById('uUsername').value    = '';
+  document.getElementById('uPassword').value    = '';
+  document.getElementById('uDisplayName').value = '';
+  document.getElementById('uRole').value        = 'viewer';
+  document.getElementById('uIsActive').checked  = true;
+  ['uUsernameErr','uPasswordErr'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+
+  if (userId) {
+    // Edit mode
+    const u = _usersData.find(x => x.id === userId);
+    if (!u) return;
+    title.textContent = `แก้ไขผู้ใช้: ${u.username}`;
+    document.getElementById('uUsername').value    = u.username;
+    document.getElementById('uUsername').disabled = true;
+    document.getElementById('uDisplayName').value = u.display_name || '';
+    document.getElementById('uRole').value        = u.role;
+    document.getElementById('uIsActive').checked  = u.is_active;
+    pwRow?.classList.add('hidden');
+    actRow?.classList.remove('hidden');
+    document.getElementById('btnSaveUser').textContent = 'บันทึกการแก้ไข';
+  } else {
+    // Create mode
+    title.textContent = 'เพิ่มผู้ใช้ใหม่';
+    document.getElementById('uUsername').disabled = false;
+    pwRow?.classList.remove('hidden');
+    actRow?.classList.add('hidden');
+    document.getElementById('btnSaveUser').textContent = 'สร้างผู้ใช้';
+  }
+  overlay.classList.remove('hidden');
+}
+
+function closeUserModal() {
+  document.getElementById('userModal')?.classList.add('hidden');
+  _editingUserId = null;
+}
+
+async function saveUser() {
+  const btn = document.getElementById('btnSaveUser');
+  let valid = true;
+
+  const username    = document.getElementById('uUsername')?.value.trim().toLowerCase();
+  const password    = document.getElementById('uPassword')?.value;
+  const displayName = document.getElementById('uDisplayName')?.value.trim();
+  const role        = document.getElementById('uRole')?.value;
+  const isActive    = document.getElementById('uIsActive')?.checked ?? true;
+
+  // Validate
+  if (!_editingUserId) {
+    const unErr = document.getElementById('uUsernameErr');
+    if (!username || username.length < 3 || !/^[a-z0-9_\-.]+$/.test(username)) {
+      unErr?.classList.remove('hidden');
+      unErr.textContent = !username ? 'Username ต้องไม่ว่าง' : username.length < 3 ? 'ต้องมีอย่างน้อย 3 ตัวอักษร' : 'ใช้ได้เฉพาะ a-z, 0-9, _, -, .';
+      valid = false;
+    } else unErr?.classList.add('hidden');
+
+    const pwErr = document.getElementById('uPasswordErr');
+    if (!password || password.length < 6) {
+      pwErr?.classList.remove('hidden');
+      valid = false;
+    } else pwErr?.classList.add('hidden');
+  }
+
+  if (!valid) return;
+
+  if (btn) { btn.disabled = true; btn.textContent = 'กำลังบันทึก…'; }
+
+  try {
+    if (_editingUserId) {
+      await apiCall(`/api/users/${_editingUserId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ role, display_name: displayName, is_active: isActive }),
+      });
+      showToast('อัปเดตผู้ใช้สำเร็จ', 'success');
+    } else {
+      await apiCall('/api/users', {
+        method: 'POST',
+        body: JSON.stringify({ username, password, role, display_name: displayName }),
+      });
+      showToast(`สร้างผู้ใช้ '${username}' สำเร็จ`, 'success');
+    }
+    closeUserModal();
+    await fetchUsers();
+  } catch (e) {
+    showToast(e.message || 'บันทึกล้มเหลว', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = _editingUserId ? 'บันทึกการแก้ไข' : 'สร้างผู้ใช้'; }
+  }
+}
+
+// ── Reset Password ────────────────────────────────────────────────────────────
+function openResetPwModal(userId, username) {
+  _resetPwUserId = userId;
+  const overlay = document.getElementById('resetPwModal');
+  const nameEl  = document.getElementById('resetPwUsername');
+  const inp     = document.getElementById('newPwInput');
+  if (!overlay) return;
+  if (nameEl) nameEl.textContent = username;
+  if (inp)    inp.value = '';
+  document.getElementById('newPwErr')?.classList.add('hidden');
+  overlay.classList.remove('hidden');
+}
+
+function closeResetPwModal() {
+  document.getElementById('resetPwModal')?.classList.add('hidden');
+  _resetPwUserId = null;
+}
+
+async function confirmResetPw() {
+  const pw  = document.getElementById('newPwInput')?.value;
+  const err = document.getElementById('newPwErr');
+  if (!pw || pw.length < 6) {
+    err?.classList.remove('hidden');
+    return;
+  }
+  err?.classList.add('hidden');
+  try {
+    await apiCall(`/api/users/${_resetPwUserId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ new_password: pw }),
+    });
+    showToast('Reset password สำเร็จ', 'success');
+    closeResetPwModal();
+  } catch (e) {
+    showToast(e.message || 'Reset ล้มเหลว', 'error');
+  }
+}
+
+// ── Delete User ───────────────────────────────────────────────────────────────
+async function deleteUser(userId, username) {
+  if (!confirm(`ยืนยันลบผู้ใช้ "${username}" ?\nการกระทำนี้ไม่สามารถยกเลิกได้`)) return;
+  try {
+    await apiCall(`/api/users/${userId}`, { method: 'DELETE' });
+    showToast(`ลบผู้ใช้ '${username}' สำเร็จ`, 'success');
+    await fetchUsers();
+  } catch (e) {
+    showToast(e.message || 'ลบล้มเหลว', 'error');
+  }
+}
+
+// ── Toggle password visibility ────────────────────────────────────────────────
+function toggleFieldPw(inputId, iconEl) {
+  const inp  = document.getElementById(inputId);
+  if (!inp) return;
+  const hide = inp.type === 'password';
+  inp.type   = hide ? 'text' : 'password';
+  if (iconEl) iconEl.style.color = hide ? 'var(--accent)' : 'var(--text3)';
+}
+
+// ── Hook เข้า switchSettings — handled directly in original function above ──

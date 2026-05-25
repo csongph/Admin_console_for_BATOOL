@@ -414,6 +414,11 @@
       <i class="nav-icon">≡</i>
       <span>Log Viewer</span>
     </a>
+    <a class="nav-item" data-page="activity" href="#">
+      <i class="nav-icon">⟳</i>
+      <span>Update Activity</span>
+      <span class="nav-badge" id="activityNavBadge" style="display:none">0</span>
+    </a>
 
     <div class="nav-section-label">System</div>
     <a class="nav-item" data-page="settings" href="#">
@@ -746,6 +751,81 @@
       <div class="log-terminal" id="logTerminal"></div>
     </div>
 
+    <!-- ══════════════════════════════════════════════════ UPDATE ACTIVITY PAGE ══ -->
+    <div class="page hidden" id="page-activity">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Update Activity</h1>
+          <p class="page-desc">ติดตามการเปลี่ยนแปลงข้อมูลโดยผู้ใช้งาน — ชื่อ, ID, วันที่ และรายละเอียด</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-secondary" onclick="fetchActivities()">↺ รีเฟรช</button>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="table-card" style="margin-bottom:16px;padding:14px 20px;">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+          <div class="filter-search" style="flex:1;min-width:180px;max-width:280px">
+            <span class="search-icon">⌕</span>
+            <input type="text" id="activitySearchUser" placeholder="ค้นหาชื่อผู้ใช้…" class="search-input" oninput="filterActivities()" />
+          </div>
+          <select class="filter-select" id="activityFilterAction" onchange="filterActivities()">
+            <option value="">ทุก Action</option>
+            <option value="create">➕ Create</option>
+            <option value="update">✏ Update</option>
+            <option value="delete">✕ Delete</option>
+            <option value="bulk_import">⬆ Bulk Import</option>
+          </select>
+          <select class="filter-select" id="activityFilterType" onchange="filterActivities()">
+            <option value="">ทุก Target</option>
+            <option value="mapping">Mapping</option>
+            <option value="database">Database</option>
+            <option value="session">Session</option>
+          </select>
+          <span id="activityCount" style="font-size:12px;color:var(--text3);margin-left:auto;white-space:nowrap"></span>
+        </div>
+      </div>
+
+      <!-- Activity table -->
+      <div class="table-card">
+        <div class="table-wrap">
+          <table class="data-table" id="activityTable">
+            <thead>
+              <tr>
+                <th style="width:48px">#</th>
+                <th style="width:130px">ผู้ใช้งาน</th>
+                <th style="width:100px">Action</th>
+                <th style="width:90px">Target</th>
+                <th style="width:70px">ID</th>
+                <th>สรุปการเปลี่ยนแปลง</th>
+                <th style="width:150px">วันที่ / เวลา</th>
+                <th style="width:60px"></th>
+              </tr>
+            </thead>
+            <tbody id="activityBody">
+              <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">กำลังโหลด…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span></span>
+          <div id="activityPagination" class="pagination"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity Detail Modal -->
+    <div class="modal-overlay hidden" id="activityDetailModal" onclick="if(event.target===this)closeActivityModal()">
+      <div class="modal" style="max-width:700px;width:95vw">
+        <div class="modal-header">
+          <div class="modal-title" id="activityModalTitle">รายละเอียด Activity</div>
+          <button class="modal-close" onclick="closeActivityModal()">✕</button>
+        </div>
+        <div class="modal-body" id="activityModalBody" style="padding:0"></div>
+      </div>
+    </div>
+
     <div class="page hidden" id="page-settings">
       <div class="page-header">
         <div>
@@ -757,6 +837,7 @@
       <div class="settings-layout">
         <div class="settings-nav">
           <button class="settings-nav-item active" data-section="general" onclick="switchSettings('general', this)">General</button>
+          <button class="settings-nav-item" data-section="users" onclick="switchSettings('users', this)">👥 Users</button>
           <button class="settings-nav-item" data-section="security" onclick="switchSettings('security', this)">Security</button>
           <button class="settings-nav-item" data-section="ai" onclick="switchSettings('ai', this)">AI Mapping</button>
           <button class="settings-nav-item" data-section="upload" onclick="switchSettings('upload', this)">Upload</button>
@@ -764,6 +845,44 @@
         </div>
 
         <div class="settings-body">
+
+          <!-- ══ USERS SECTION ══════════════════════════════════════════════ -->
+          <div class="settings-section hidden" id="settings-users">
+            <div class="settings-group">
+              <div class="settings-group-title" style="display:flex;align-items:center;justify-content:space-between">
+                <span>จัดการผู้ใช้งาน</span>
+                <button class="btn btn-primary btn-sm" id="btnAddUser" onclick="openUserModal()" style="display:none">+ เพิ่มผู้ใช้</button>
+              </div>
+
+              <!-- Admin-only notice -->
+              <div id="userAdminNotice" class="hidden" style="padding:14px 16px;border-radius:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:#f87171;font-size:13px;margin-bottom:16px">
+                ⚠️ เฉพาะ Admin เท่านั้นที่สามารถเพิ่ม / แก้ไข / ลบผู้ใช้ได้
+              </div>
+
+              <!-- User table -->
+              <div class="table-wrap" style="margin-top:8px">
+                <table class="data-table" id="usersTable">
+                  <thead>
+                    <tr>
+                      <th style="width:44px">#</th>
+                      <th>Username</th>
+                      <th>ชื่อแสดง</th>
+                      <th style="width:90px">Role</th>
+                      <th style="width:80px">สถานะ</th>
+                      <th style="width:130px">วันที่สร้าง</th>
+                      <th style="width:130px">Login ล่าสุด</th>
+                      <th style="width:80px" id="userActionHeader"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="usersBody">
+                    <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">กำลังโหลด…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ GENERAL SECTION ════════════════════════════════════════════ -->
           <div class="settings-section" id="settings-general">
             <div class="settings-group">
               <div class="settings-group-title">Appearance</div>
@@ -1404,5 +1523,81 @@ const _s = document.createElement('style');
 _s.textContent = `@keyframes shakeCard{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}`;
 document.head.appendChild(_s);
 </script>
+
+<!-- ══════════════════════ ADD / EDIT USER MODAL ══════════════════════════ -->
+<div class="modal-overlay hidden" id="userModal" onclick="if(event.target===this)closeUserModal()">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title" id="userModalTitle">เพิ่มผู้ใช้ใหม่</div>
+      <button class="modal-close" onclick="closeUserModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid" style="grid-template-columns:1fr">
+        <div class="form-field">
+          <label class="form-label">Username <span class="required">*</span></label>
+          <input type="text" class="form-input" id="uUsername" placeholder="ตัวพิมพ์เล็ก a-z, 0-9, _, -, ." autocomplete="off" />
+          <div class="form-error hidden" id="uUsernameErr">Username ไม่ถูกต้อง</div>
+        </div>
+        <div class="form-field" id="uPasswordRow">
+          <label class="form-label">Password <span class="required">*</span></label>
+          <div style="position:relative">
+            <input type="password" class="form-input" id="uPassword" placeholder="อย่างน้อย 6 ตัวอักษร" autocomplete="new-password" style="padding-right:40px" />
+            <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text3)" onclick="toggleFieldPw('uPassword',this)">◉</span>
+          </div>
+          <div class="form-error hidden" id="uPasswordErr">Password ต้องมีอย่างน้อย 6 ตัวอักษร</div>
+        </div>
+        <div class="form-field">
+          <label class="form-label">ชื่อแสดง (Display Name)</label>
+          <input type="text" class="form-input" id="uDisplayName" placeholder="ชื่อ-นามสกุล หรือชื่อเล่น" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Role <span class="required">*</span></label>
+          <select class="form-input" id="uRole">
+            <option value="viewer">👁 Viewer — ดูข้อมูลได้อย่างเดียว</option>
+            <option value="editor">✏ Editor — แก้ไข mapping ได้</option>
+            <option value="admin">🛡 Admin — สิทธิ์เต็ม</option>
+          </select>
+        </div>
+        <div class="form-field hidden" id="uActiveRow">
+          <label class="form-label">สถานะ</label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="uIsActive" checked style="width:16px;height:16px" />
+            <span style="font-size:13px">เปิดใช้งาน (Active)</span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:16px 24px;border-top:1px solid var(--border)">
+      <button class="btn btn-secondary" onclick="closeUserModal()">ยกเลิก</button>
+      <button class="btn btn-primary" id="btnSaveUser" onclick="saveUser()">บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ RESET PASSWORD MODAL ═══════════════════════════ -->
+<div class="modal-overlay hidden" id="resetPwModal" onclick="if(event.target===this)closeResetPwModal()">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <div class="modal-title">Reset Password</div>
+      <button class="modal-close" onclick="closeResetPwModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px">กำหนด password ใหม่สำหรับ <strong id="resetPwUsername"></strong></p>
+      <div class="form-field">
+        <label class="form-label">Password ใหม่ <span class="required">*</span></label>
+        <div style="position:relative">
+          <input type="password" class="form-input" id="newPwInput" placeholder="อย่างน้อย 6 ตัวอักษร" autocomplete="new-password" style="padding-right:40px" />
+          <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text3)" onclick="toggleFieldPw('newPwInput',this)">◉</span>
+        </div>
+        <div class="form-error hidden" id="newPwErr">Password ต้องมีอย่างน้อย 6 ตัวอักษร</div>
+      </div>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:16px 24px;border-top:1px solid var(--border)">
+      <button class="btn btn-secondary" onclick="closeResetPwModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="confirmResetPw()">ยืนยัน Reset</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

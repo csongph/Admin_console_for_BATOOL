@@ -25,6 +25,7 @@ from app.core.security import get_current_user
 from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import MappingRule, DatatypeStandard
+from app.routers.activity import record_activity
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Mappings"])
@@ -159,10 +160,21 @@ async def create_mapping(
                 "message": f"Mapping '{body.raw_type}' from '{body.src_db}' → '{body.dest_db}' already exists",
             },
         )
+    username = current_user.get("username", "unknown")
     logger.info(
         "Mapping created: id=%s raw_type=%s src=%s dest=%s by user=%s",
-        record.id, body.raw_type, body.src_db, body.dest_db, current_user.get("username"),
+        record.id, body.raw_type, body.src_db, body.dest_db, username,
     )
+    await record_activity(
+        db          = db,
+        username    = username,
+        action      = "create",
+        target_type = "mapping",
+        target_id   = str(record.id),
+        summary     = f"สร้าง mapping: {body.raw_type} ({body.src_db} → {body.dest_db})",
+        detail      = {"after": record.to_dict()},
+    )
+    await db.commit()
     return APIResponse(success=True, message="Mapping rule created", data=record.to_dict())
 
 
@@ -196,7 +208,18 @@ async def update_mapping(
             },
         )
 
-    logger.info("Mapping updated: id=%s by user=%s", mapping_id, current_user.get("username"))
+    username = current_user.get("username", "unknown")
+    logger.info("Mapping updated: id=%s by user=%s", mapping_id, username)
+    await record_activity(
+        db          = db,
+        username    = username,
+        action      = "update",
+        target_type = "mapping",
+        target_id   = str(mapping_id),
+        summary     = f"แก้ไข mapping ID {mapping_id}: {record.raw_type} ({record.src_db} → {record.dest_db})",
+        detail      = {"changes": body.dict(exclude_none=True), "after": record.to_dict()},
+    )
+    await db.commit()
     return APIResponse(success=True, message="Mapping rule updated", data=record.to_dict())
 
 
@@ -212,8 +235,18 @@ async def delete_mapping(
         raise HTTPException(status_code=404, detail="Mapping rule not found")
     data = record.to_dict()
     await db.delete(record)
+    username = current_user.get("username", "unknown")
+    logger.info("Mapping deleted: id=%s by user=%s", mapping_id, username)
+    await record_activity(
+        db          = db,
+        username    = username,
+        action      = "delete",
+        target_type = "mapping",
+        target_id   = str(mapping_id),
+        summary     = f"ลบ mapping ID {mapping_id}: {data.get('raw_type','')} ({data.get('src_db','')} → {data.get('dest_db','')})",
+        detail      = {"before": data},
+    )
     await db.commit()
-    logger.info("Mapping deleted: id=%s by user=%s", mapping_id, current_user.get("username"))
     return APIResponse(success=True, message="Mapping rule deleted", data=data)
 
 
@@ -290,6 +323,17 @@ async def bulk_import_mappings(
         "Bulk import: imported=%d skipped=%d failed=%d by user=%s",
         imported, skipped, failed, current_user.get("username"),
     )
+    if imported > 0:
+        await record_activity(
+            db          = db,
+            username    = current_user.get("username", "unknown"),
+            action      = "bulk_import",
+            target_type = "mapping",
+            target_id   = None,
+            summary     = f"Bulk import: {imported} rows (skipped {skipped}, failed {failed})",
+            detail      = {"imported": imported, "skipped": skipped, "failed": failed, "errors": errors[:10]},
+        )
+        await db.commit()
     return APIResponse(
         success=True,
         message=f"Import complete: {imported} imported, {skipped} skipped, {failed} failed",
