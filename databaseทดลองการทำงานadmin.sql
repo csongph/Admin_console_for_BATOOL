@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict A3V70jQ5SgkZUCs01RtzhrELL9YSKHJ3Yr5Dl3xet3E1AcyUJTLJ4JHYbyof1yA
+\restrict UN6EyRn5Oh1Ez2JwZ7oRlAmw96ZqaMCQanOetO9igQKVfcNhWI3OMfhSvrwfFa8
 
 -- Dumped from database version 18.3
 -- Dumped by pg_dump version 18.3
 
--- Started on 2026-05-25 11:43:08
+-- Started on 2026-05-26 14:03:45
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -22,7 +22,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- TOC entry 232 (class 1255 OID 16933)
+-- TOC entry 236 (class 1255 OID 16933)
 -- Name: update_updated_at(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -41,6 +41,77 @@ ALTER FUNCTION public.update_updated_at() OWNER TO postgres;
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+
+--
+-- TOC entry 235 (class 1259 OID 17067)
+-- Name: admin_users; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.admin_users (
+    id integer NOT NULL,
+    username character varying(128) NOT NULL,
+    hashed_pw character varying(256) NOT NULL,
+    role character varying(32) DEFAULT 'viewer'::character varying NOT NULL,
+    display_name character varying(128) DEFAULT ''::character varying NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_login timestamp with time zone
+);
+
+
+ALTER TABLE public.admin_users OWNER TO postgres;
+
+--
+-- TOC entry 5141 (class 0 OID 0)
+-- Dependencies: 235
+-- Name: TABLE admin_users; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.admin_users IS 'ผู้ใช้งาน Admin Console — จัดการโดย admin';
+
+
+--
+-- TOC entry 5142 (class 0 OID 0)
+-- Dependencies: 235
+-- Name: COLUMN admin_users.hashed_pw; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.admin_users.hashed_pw IS 'bcrypt hashed password';
+
+
+--
+-- TOC entry 5143 (class 0 OID 0)
+-- Dependencies: 235
+-- Name: COLUMN admin_users.role; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.admin_users.role IS 'admin | editor | viewer';
+
+
+--
+-- TOC entry 234 (class 1259 OID 17066)
+-- Name: admin_users_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.admin_users_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.admin_users_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 5144 (class 0 OID 0)
+-- Dependencies: 234
+-- Name: admin_users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.admin_users_id_seq OWNED BY public.admin_users.id;
+
 
 --
 -- TOC entry 227 (class 1259 OID 16869)
@@ -76,7 +147,7 @@ CREATE SEQUENCE public.database_records_id_seq
 ALTER SEQUENCE public.database_records_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5113 (class 0 OID 0)
+-- TOC entry 5145 (class 0 OID 0)
 -- Dependencies: 226
 -- Name: database_records_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -114,7 +185,10 @@ CREATE TABLE public.datatype_mapping (
     has_scale boolean DEFAULT false,
     notes text,
     updated_at timestamp without time zone DEFAULT now(),
-    created_at timestamp with time zone DEFAULT now()
+    created_at timestamp with time zone DEFAULT now(),
+    max_length integer,
+    numeric_precision integer,
+    numeric_scale integer
 );
 
 
@@ -149,7 +223,10 @@ CREATE TABLE public.datatype_raw_mapping (
     standard_id integer,
     is_default boolean DEFAULT false,
     updated_at timestamp without time zone DEFAULT now(),
-    created_at timestamp with time zone DEFAULT now()
+    created_at timestamp with time zone DEFAULT now(),
+    max_length integer,
+    numeric_precision integer,
+    numeric_scale integer
 );
 
 
@@ -179,7 +256,10 @@ CREATE TABLE public.datatype_standard (
     id integer DEFAULT nextval('public.datatype_standard_id_seq'::regclass) NOT NULL,
     standard_type character varying(100) NOT NULL,
     category character varying(50),
-    description text
+    description text,
+    data_category character varying(50),
+    has_length_parameter boolean DEFAULT false,
+    is_alias_of integer
 );
 
 
@@ -241,7 +321,7 @@ CREATE SEQUENCE public.mapping_rules_id_seq
 ALTER SEQUENCE public.mapping_rules_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5114 (class 0 OID 0)
+-- TOC entry 5146 (class 0 OID 0)
 -- Dependencies: 230
 -- Name: mapping_rules_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -282,7 +362,95 @@ CREATE TABLE public.system_settings (
 ALTER TABLE public.system_settings OWNER TO postgres;
 
 --
--- TOC entry 4897 (class 2604 OID 16872)
+-- TOC entry 5147 (class 0 OID 0)
+-- Dependencies: 229
+-- Name: TABLE system_settings; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.system_settings IS 'Key-value store สำหรับ system configuration';
+
+
+--
+-- TOC entry 233 (class 1259 OID 17048)
+-- Name: update_activities; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.update_activities (
+    id integer NOT NULL,
+    username character varying(128) NOT NULL,
+    action character varying(32) NOT NULL,
+    target_type character varying(64) NOT NULL,
+    target_id character varying(64),
+    summary character varying(256) NOT NULL,
+    detail text,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.update_activities OWNER TO postgres;
+
+--
+-- TOC entry 5148 (class 0 OID 0)
+-- Dependencies: 233
+-- Name: TABLE update_activities; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.update_activities IS 'บันทึกทุกการเปลี่ยนแปลงข้อมูลของผู้ใช้งาน';
+
+
+--
+-- TOC entry 5149 (class 0 OID 0)
+-- Dependencies: 233
+-- Name: COLUMN update_activities.action; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.update_activities.action IS 'create | update | delete | bulk_import';
+
+
+--
+-- TOC entry 5150 (class 0 OID 0)
+-- Dependencies: 233
+-- Name: COLUMN update_activities.detail; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.update_activities.detail IS 'JSON {before, after, changes} snapshot';
+
+
+--
+-- TOC entry 232 (class 1259 OID 17047)
+-- Name: update_activities_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.update_activities_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.update_activities_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 5151 (class 0 OID 0)
+-- Dependencies: 232
+-- Name: update_activities_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.update_activities_id_seq OWNED BY public.update_activities.id;
+
+
+--
+-- TOC entry 4917 (class 2604 OID 17070)
+-- Name: admin_users id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.admin_users ALTER COLUMN id SET DEFAULT nextval('public.admin_users_id_seq'::regclass);
+
+
+--
+-- TOC entry 4908 (class 2604 OID 16872)
 -- Name: database_records id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -290,7 +458,7 @@ ALTER TABLE ONLY public.database_records ALTER COLUMN id SET DEFAULT nextval('pu
 
 
 --
--- TOC entry 4899 (class 2604 OID 16967)
+-- TOC entry 4910 (class 2604 OID 16967)
 -- Name: mapping_rules id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -298,256 +466,354 @@ ALTER TABLE ONLY public.mapping_rules ALTER COLUMN id SET DEFAULT nextval('publi
 
 
 --
--- TOC entry 5103 (class 0 OID 16869)
+-- TOC entry 4916 (class 2604 OID 17051)
+-- Name: update_activities id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.update_activities ALTER COLUMN id SET DEFAULT nextval('public.update_activities_id_seq'::regclass);
+
+
+--
+-- TOC entry 5135 (class 0 OID 17067)
+-- Dependencies: 235
+-- Data for Name: admin_users; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.admin_users (id, username, hashed_pw, role, display_name, is_active, created_at, last_login) FROM stdin;
+1	admin	$2b$12$kIhik.v1akqcrhhvo.Q8wO6k3YW86jY5TQxx/5VF4EXq4gcuurcYy	admin	Superadmin	t	2026-05-25 13:43:43.581998+07	2026-05-26 13:31:31.24437+07
+5	perm	$2b$12$GDF7k7QpCqJe/7D.GtYi8ewgMsOWyBtHJKxssYAOKIzMXMI/WOIde	editor	พี่เปรม	t	2026-05-25 13:52:09.483071+07	2026-05-26 13:39:22.197438+07
+\.
+
+
+--
+-- TOC entry 5127 (class 0 OID 16869)
 -- Dependencies: 227
 -- Data for Name: database_records; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.database_records (id, key, name, version, status, enabled) FROM stdin;
-4	oracle	Oracle	19c	active	t
-14	mariadb	mariaDB	7.x	active	t
-2	postgresql	PostgreSQL	15	active	t
 1	sqlserver	SQL Server	2019	active	t
+2	postgresql	PostgreSQL	15	active	t
 3	mysql	MySQL	8.x	active	t
+4	oracle	Oracle	19c	active	t
+6	mariadb	mariaDB	7.x	active	t
 \.
 
 
 --
--- TOC entry 5100 (class 0 OID 16733)
+-- TOC entry 5124 (class 0 OID 16733)
 -- Dependencies: 224
 -- Data for Name: datatype_mapping; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.datatype_mapping (id, db_id, standard_id, final_type, has_length, has_precision, has_scale, notes, updated_at, created_at) FROM stdin;
-24	2	1	integer	f	f	f	\N	2026-05-22 11:28:27.456874	2026-05-21 13:43:01.204681+07
-40	3	1	int	f	f	f	\N	2026-05-22 11:28:27.468251	2026-05-21 13:43:01.204681+07
-54	4	1	number(10)	f	t	f	\N	2026-05-22 11:28:27.479447	2026-05-21 13:43:01.204681+07
-77	2	17	smallint	f	f	f	\N	2026-05-22 11:31:54.694956	2026-05-21 13:43:01.204681+07
-1	1	1	int	f	f	f	\N	2026-05-22 11:28:27.437201	2026-05-21 13:43:01.204681+07
-35	2	12	timestamp	f	t	f	\N	2026-05-22 11:28:28.217049	2026-05-21 13:43:01.204681+07
-51	3	12	timestamp	f	t	f	\N	2026-05-22 11:28:28.228782	2026-05-21 13:43:01.204681+07
-36	2	13	bytea	f	f	f	\N	2026-05-22 11:31:54.642467	2026-05-21 13:43:01.204681+07
-88	3	17	tinyint	f	f	f	\N	2026-05-22 11:31:54.708954	2026-05-21 13:43:01.204681+07
-101	4	17	number(3)	f	f	f	\N	2026-05-22 11:31:54.723424	2026-05-21 13:43:01.204681+07
-17	1	19	nvarchar	t	f	f	\N	2026-05-22 11:31:54.737194	2026-05-21 13:43:01.204681+07
-78	2	18	smallint	f	f	f	\N	2026-05-22 11:28:28.165991	2026-05-21 13:43:01.204681+07
-89	3	18	smallint	f	f	f	\N	2026-05-22 11:28:28.178718	2026-05-21 13:43:01.204681+07
-102	4	18	number(5)	f	f	f	\N	2026-05-22 11:28:28.192216	2026-05-21 13:43:01.204681+07
-66	1	12	datetime2	f	t	f	\N	2026-05-22 11:28:28.204729	2026-05-21 13:43:01.204681+07
-79	2	19	varchar	t	f	f	\N	2026-05-22 11:31:54.750156	2026-05-21 13:43:01.204681+07
-90	3	19	varchar	t	f	f	\N	2026-05-22 11:31:54.763285	2026-05-21 13:43:01.204681+07
-103	4	19	nvarchar2	t	f	f	\N	2026-05-22 11:31:54.775033	2026-05-21 13:43:01.204681+07
-18	1	20	nchar	t	f	f	\N	2026-05-22 11:31:54.787348	2026-05-21 13:43:01.204681+07
-37	2	14	uuid	f	f	f	\N	2026-05-22 11:28:28.118952	2026-05-21 13:43:01.204681+07
-69	3	14	char(36)	f	f	f	\N	2026-05-22 11:28:28.129947	2026-05-21 13:43:01.204681+07
-72	4	14	varchar2(36)	f	f	f	\N	2026-05-22 11:28:28.141777	2026-05-21 13:43:01.204681+07
-16	1	18	smallint	f	f	f	\N	2026-05-22 11:28:28.153317	2026-05-21 13:43:01.204681+07
-64	4	13	blob	f	f	f	\N	2026-05-22 11:31:54.667924	2026-05-21 13:43:01.204681+07
-15	1	17	tinyint	f	f	f	\N	2026-05-22 11:31:54.680817	2026-05-21 13:43:01.204681+07
-10	1	10	date	f	f	f	\N	2026-05-22 11:31:54.56852	2026-05-21 13:43:01.204681+07
-67	1	15	nvarchar(max)	f	f	f	\N	2026-05-22 11:28:28.004079	2026-05-21 13:43:01.204681+07
-20	1	22	datetime	f	f	f	\N	2026-05-22 11:28:28.432548	2026-05-21 13:43:01.204681+07
-38	2	15	jsonb	f	f	f	\N	2026-05-22 11:28:28.018115	2026-05-21 13:43:01.204681+07
-53	3	15	json	f	f	f	\N	2026-05-22 11:28:28.03147	2026-05-21 13:43:01.204681+07
-73	4	15	clob	f	f	f	\N	2026-05-22 11:28:28.044174	2026-05-21 13:43:01.204681+07
-146	2	26	geometry	f	f	f	\N	2026-05-22 11:28:28.533149	2026-05-21 13:43:01.204681+07
-147	3	26	geometry	f	f	f	\N	2026-05-22 11:28:28.543675	2026-05-21 13:43:01.204681+07
-52	3	13	blob	f	f	f	\N	2026-05-22 11:31:54.65489	2026-05-21 13:43:01.204681+07
-13	1	14	uniqueidentifier	f	f	f	\N	2026-05-22 11:28:28.106419	2026-05-21 13:43:01.204681+07
-71	3	22	datetime	f	f	f	\N	2026-05-22 11:28:28.455879	2026-05-21 13:43:01.204681+07
-74	4	22	timestamp	f	t	f	\N	2026-05-22 11:28:28.467148	2026-05-21 13:43:01.204681+07
-85	2	25	timestamptz	f	f	f	\N	2026-05-22 11:31:54.905515	2026-05-21 13:43:01.204681+07
-96	3	25	datetime	f	f	f	\N	2026-05-22 11:31:54.919245	2026-05-21 13:43:01.204681+07
-109	4	25	timestamp with time zone	f	f	f	\N	2026-05-22 11:31:54.932213	2026-05-21 13:43:01.204681+07
-145	1	26	geometry	f	f	f	\N	2026-05-22 11:28:28.523404	2026-05-21 13:43:01.204681+07
-33	2	10	date	f	f	f	\N	2026-05-22 11:31:54.584462	2026-05-21 13:43:01.204681+07
-49	3	10	date	f	f	f	\N	2026-05-22 11:31:54.599639	2026-05-21 13:43:01.204681+07
-97	4	10	date	f	f	f	\N	2026-05-22 11:31:54.614638	2026-05-21 13:43:01.204681+07
-12	1	13	varbinary	t	f	f	\N	2026-05-22 11:31:54.629776	2026-05-21 13:43:01.204681+07
-80	2	20	char	t	f	f	\N	2026-05-22 11:31:54.799657	2026-05-21 13:43:01.204681+07
-104	4	20	nchar	t	f	f	\N	2026-05-22 11:31:54.826143	2026-05-21 13:43:01.204681+07
-19	1	21	ntext	f	f	f	\N	2026-05-22 11:31:54.838615	2026-05-21 13:43:01.204681+07
-92	3	21	text	f	f	f	\N	2026-05-22 11:31:54.865099	2026-05-21 13:43:01.204681+07
-105	4	21	nclob	f	f	f	\N	2026-05-22 11:31:54.879198	2026-05-21 13:43:01.204681+07
-23	1	25	datetimeoffset	f	t	f	\N	2026-05-22 11:31:54.892289	2026-05-21 13:43:01.204681+07
-59	4	6	number(1)	f	f	f	\N	2026-05-21 14:29:15.294371	2026-05-21 13:43:01.204681+07
-46	3	7	char	t	f	f	\N	2026-05-21 15:03:20.02105	2026-05-21 13:43:01.204681+07
-44	3	5	double	f	f	f	\N	2026-05-21 14:29:15.236429	2026-05-21 13:43:01.204681+07
-34	2	11	time	f	t	f	\N	2026-05-21 14:29:14.990976	2026-05-21 13:43:01.204681+07
-57	4	4	binary_float	f	f	f	\N	2026-05-21 14:29:15.20251	2026-05-21 13:43:01.204681+07
-6	1	6	bit	f	f	f	\N	2026-05-21 14:29:15.259247	2026-05-21 13:43:01.204681+07
-25	2	2	bigint	f	f	f	\N	2026-05-21 14:29:15.084657	2026-05-21 13:43:01.204681+07
-42	3	3	decimal	f	t	t	\N	2026-05-21 14:29:15.784822	2026-05-21 13:43:01.204681+07
-60	4	7	char	t	f	f	\N	2026-05-21 15:03:20.034253	2026-05-21 13:43:01.204681+07
-58	4	5	binary_double	f	f	f	\N	2026-05-21 14:29:15.24771	2026-05-21 13:43:01.204681+07
-4	1	4	real	f	f	f	\N	2026-05-21 14:29:15.167421	2026-05-21 13:43:01.204681+07
-39	2	16	xml	f	f	f	\N	2026-05-21 14:29:15.038797	2026-05-21 13:43:01.204681+07
-70	3	16	text	f	f	f	\N	2026-05-21 14:29:15.050201	2026-05-21 13:43:01.204681+07
-65	4	16	xmltype	f	f	f	\N	2026-05-21 14:29:15.062609	2026-05-21 13:43:01.204681+07
-2	1	2	bigint	f	f	f	\N	2026-05-21 14:29:15.073141	2026-05-21 13:43:01.204681+07
-28	2	5	double precision	f	f	f	\N	2026-05-21 14:29:15.225053	2026-05-21 13:43:01.204681+07
-29	2	6	boolean	f	f	f	\N	2026-05-21 14:29:15.271332	2026-05-21 13:43:01.204681+07
-3	1	3	decimal	f	t	t	\N	2026-05-21 14:29:15.763486	2026-05-21 13:43:01.204681+07
-56	4	3	number	f	t	t	\N	2026-05-21 14:29:15.795161	2026-05-21 13:43:01.204681+07
-5	1	5	float	f	f	f	\N	2026-05-21 14:29:15.213994	2026-05-21 13:43:01.204681+07
-27	2	4	real	f	f	f	\N	2026-05-21 14:29:15.178752	2026-05-21 13:43:01.204681+07
-43	3	4	float	f	f	f	\N	2026-05-21 14:29:15.191396	2026-05-21 13:43:01.204681+07
-45	3	6	tinyint(1)	f	f	f	\N	2026-05-21 14:29:15.283507	2026-05-21 13:43:01.204681+07
-50	3	11	time	f	t	f	\N	2026-05-21 14:29:15.003134	2026-05-21 13:43:01.204681+07
-55	4	2	number(19)	f	t	f	\N	2026-05-21 14:29:15.108795	2026-05-21 13:43:01.204681+07
-9	1	9	text	f	f	f	\N	2026-05-21 15:03:20.589048	2026-05-21 13:43:01.204681+07
-41	3	2	bigint	f	f	f	\N	2026-05-21 14:29:15.096969	2026-05-21 13:43:01.204681+07
-98	4	11	timestamp	f	t	f	\N	2026-05-21 14:29:15.015288	2026-05-21 13:43:01.204681+07
-14	1	16	xml	f	f	f	\N	2026-05-21 14:29:15.026691	2026-05-21 13:43:01.204681+07
-11	1	11	time	f	t	f	\N	2026-05-21 14:29:14.977057	2026-05-21 13:43:01.204681+07
-32	2	9	text	f	f	f	\N	2026-05-21 15:03:20.601244	2026-05-21 13:43:01.204681+07
-48	3	9	text	f	f	f	\N	2026-05-21 15:03:20.612617	2026-05-21 13:43:01.204681+07
-62	4	9	clob	f	f	f	\N	2026-05-21 15:03:20.624932	2026-05-21 13:43:01.204681+07
-8	1	8	varchar	t	f	f	\N	2026-05-21 15:03:20.871014	2026-05-21 13:43:01.204681+07
-7	1	7	char	t	f	f	\N	2026-05-21 15:03:19.996076	2026-05-21 13:43:01.204681+07
-30	2	7	char	t	f	f	\N	2026-05-21 15:03:20.008949	2026-05-21 13:43:01.204681+07
-83	2	23	timestamp	f	t	f	\N	2026-05-21 14:29:15.646071	2026-05-21 13:43:01.204681+07
-94	3	23	datetime	f	f	f	\N	2026-05-21 14:29:15.656723	2026-05-21 13:43:01.204681+07
-22	1	24	smalldatetime	f	f	f	\N	2026-05-21 14:29:15.677139	2026-05-21 13:43:01.204681+07
-95	3	24	datetime	f	f	f	\N	2026-05-21 14:29:15.700582	2026-05-21 13:43:01.204681+07
-108	4	24	date	f	f	f	\N	2026-05-21 14:29:15.711091	2026-05-21 13:43:01.204681+07
-26	2	3	numeric	f	t	t	\N	2026-05-21 14:29:15.774763	2026-05-21 13:43:01.204681+07
-31	2	8	varchar	t	f	f	\N	2026-05-21 15:03:20.882882	2026-05-21 13:43:01.204681+07
-47	3	8	varchar	t	f	f	\N	2026-05-21 15:03:20.894555	2026-05-21 13:43:01.204681+07
-157	1	29	varchar	t	f	f	\N	2026-05-22 11:28:27.636401	2026-05-21 13:43:01.204681+07
-158	2	29	varchar	t	f	f	\N	2026-05-22 11:28:27.648293	2026-05-21 13:43:01.204681+07
-159	3	29	enum	f	f	f	\N	2026-05-22 11:28:27.659654	2026-05-21 13:43:01.204681+07
-160	4	29	varchar2	t	f	f	\N	2026-05-22 11:28:27.669773	2026-05-21 13:43:01.204681+07
-21	1	23	datetime2	f	t	f	\N	2026-05-21 14:29:15.634784	2026-05-21 13:43:01.204681+07
-107	4	23	timestamp	f	t	f	\N	2026-05-21 14:29:15.666753	2026-05-21 13:43:01.204681+07
-84	2	24	timestamp	f	f	f	\N	2026-05-21 14:29:15.688725	2026-05-21 13:43:01.204681+07
-149	1	27	varchar	t	f	f	\N	2026-05-21 15:03:20.248431	2026-05-21 13:43:01.204681+07
-150	2	27	interval	f	f	f	\N	2026-05-21 15:03:20.260812	2026-05-21 13:43:01.204681+07
-151	3	27	varchar	t	f	f	\N	2026-05-21 15:03:20.272437	2026-05-21 13:43:01.204681+07
-152	4	27	interval day to second	f	t	f	\N	2026-05-21 15:03:20.283927	2026-05-21 13:43:01.204681+07
-63	4	12	timestamp	f	t	f	\N	2026-05-22 11:28:28.239982	2026-05-21 13:43:01.204681+07
-68	2	22	timestamp	f	t	f	\N	2026-05-22 11:28:28.444236	2026-05-21 13:43:01.204681+07
-148	4	26	sdo_geometry	f	f	f	\N	2026-05-22 11:28:28.553482	2026-05-21 13:43:01.204681+07
-91	3	20	char	t	f	f	\N	2026-05-22 11:31:54.813403	2026-05-21 13:43:01.204681+07
-81	2	21	text	f	f	f	\N	2026-05-22 11:31:54.852026	2026-05-21 13:43:01.204681+07
-726	14	17	Tinyint	f	f	f	\N	2026-05-22 11:31:54.94392	2026-05-22 11:31:54.94392+07
-153	1	28	varchar	t	f	f	\N	2026-05-21 15:03:20.391156	2026-05-21 13:43:01.204681+07
-154	2	28	inet	f	f	f	\N	2026-05-21 15:03:20.404953	2026-05-21 13:43:01.204681+07
-155	3	28	varchar	t	f	f	\N	2026-05-21 15:03:20.417123	2026-05-21 13:43:01.204681+07
-156	4	28	varchar2	t	f	f	\N	2026-05-21 15:03:20.427886	2026-05-21 13:43:01.204681+07
-61	4	8	varchar2	t	f	f	\N	2026-05-21 15:03:20.906728	2026-05-21 13:43:01.204681+07
+COPY public.datatype_mapping (id, db_id, standard_id, final_type, has_length, has_precision, has_scale, notes, updated_at, created_at, max_length, numeric_precision, numeric_scale) FROM stdin;
+727	6	1	int	f	f	f	\N	2026-05-25 13:32:33.607608	2026-05-25 13:32:33.607608+07	\N	\N	\N
+1	1	1	int	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+2	1	2	bigint	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+3	1	3	decimal	f	t	t	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+4	1	4	real	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+5	1	5	float	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+6	1	6	bit	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+7	1	7	char	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+8	1	8	varchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+9	1	9	text	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+10	1	10	date	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+11	1	11	time	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+12	1	13	varbinary	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+13	1	14	uniqueidentifier	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+14	1	16	xml	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+15	1	17	tinyint	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+16	1	18	smallint	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+17	1	19	nvarchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+18	1	20	nchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+19	1	21	ntext	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+20	1	22	datetime	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+21	1	23	datetime2	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+22	1	24	smalldatetime	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+23	1	25	datetimeoffset	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+24	2	1	integer	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+25	2	2	bigint	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+26	2	3	numeric	f	t	t	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+27	2	4	real	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+28	2	5	double precision	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+29	2	6	boolean	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+30	2	7	char	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+31	2	8	varchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+32	2	9	text	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+33	2	10	date	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+34	2	11	time	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+35	2	12	timestamp	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+36	2	13	bytea	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+37	2	14	uuid	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+38	2	15	jsonb	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+39	2	16	xml	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+40	3	1	int	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+41	3	2	bigint	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+42	3	3	decimal	f	t	t	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+43	3	4	float	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+44	3	5	double	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+45	3	6	tinyint(1)	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+46	3	7	char	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+47	3	8	varchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+48	3	9	text	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+49	3	10	date	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+50	3	11	time	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+51	3	12	timestamp	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+52	3	13	blob	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+53	3	15	json	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+54	4	1	number(10)	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+55	4	2	number(19)	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+56	4	3	number	f	t	t	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+57	4	4	binary_float	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+58	4	5	binary_double	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+59	4	6	number(1)	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+60	4	7	char	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+61	4	8	varchar2	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+62	4	9	clob	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+63	4	12	timestamp	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+64	4	13	blob	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+65	4	16	xmltype	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+66	1	12	datetime2	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+67	1	15	nvarchar(max)	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+68	2	22	timestamp	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+69	3	14	char(36)	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+70	3	16	text	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+71	3	22	datetime	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+72	4	14	varchar2(36)	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+73	4	15	clob	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+74	4	22	timestamp	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+77	2	17	smallint	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+78	2	18	smallint	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+79	2	19	varchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+80	2	20	char	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+81	2	21	text	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+83	2	23	timestamp	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+84	2	24	timestamp	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+85	2	25	timestamptz	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+88	3	17	tinyint	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+89	3	18	smallint	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+90	3	19	varchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+91	3	20	char	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+92	3	21	text	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+94	3	23	datetime	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+95	3	24	datetime	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+97	4	10	date	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+98	4	11	timestamp	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+101	4	17	number(3)	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+102	4	18	number(5)	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+103	4	19	nvarchar2	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+104	4	20	nchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+105	4	21	nclob	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+107	4	23	timestamp	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+108	4	24	date	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+109	4	25	timestamp with time zone	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+145	1	26	geometry	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+146	2	26	geometry	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+147	3	26	geometry	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+148	4	26	sdo_geometry	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+96	3	25	datetime	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+149	1	27	varchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+150	2	27	interval	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+151	3	27	varchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+152	4	27	interval day to second	f	t	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+153	1	28	varchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+154	2	28	inet	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+155	3	28	varchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+156	4	28	varchar2	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+157	1	29	varchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+158	2	29	varchar	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+159	3	29	enum	f	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
+160	4	29	varchar2	t	f	f	\N	2026-05-26 09:02:50.430374	2026-05-26 09:02:50.430374+07	\N	\N	\N
 \.
 
 
 --
--- TOC entry 5101 (class 0 OID 16758)
+-- TOC entry 5125 (class 0 OID 16758)
 -- Dependencies: 225
 -- Data for Name: datatype_raw_mapping; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.datatype_raw_mapping (id, db_id, raw_type, logical_type, source_type, standard_id, is_default, updated_at, created_at) FROM stdin;
-778	14	int	int	Tinyint	17	f	2026-05-22 11:31:54.94392	2026-05-22 11:31:54.94392+07
-11	2	long	timestamp-micros	timestamp	12	f	2026-05-22 11:28:27.524478	2026-05-21 13:42:34.952506+07
-23	3	float	float	float	4	f	2026-05-21 14:24:14.36372	2026-05-21 13:42:34.952506+07
-337	2	bytea	bytes	bytes	13	f	2026-05-21 13:57:09.413029	2026-05-21 13:57:09.413029+07
-338	2	smallint	int	int	18	f	2026-05-21 13:57:09.426218	2026-05-21 13:57:09.426218+07
-339	2	timestamptz	timestamp-millis	long	25	f	2026-05-21 13:57:09.438878	2026-05-21 13:57:09.438878+07
-340	1	date	date	int	10	f	2026-05-21 14:02:09.47131	2026-05-21 14:02:09.47131+07
-341	1	uniqueidentifier	uuid	string	14	f	2026-05-21 14:02:09.486854	2026-05-21 14:02:09.486854+07
-24	3	double	double	double	5	f	2026-05-21 14:24:14.409034	2026-05-21 13:42:34.952506+07
-2	1	long	timestamp-millis	smalldatetime	24	f	2026-05-21 14:29:15.711091	2026-05-21 13:42:34.952506+07
-25	3	boolean	boolean	tinyint(1)	6	f	2026-05-21 14:24:14.451447	2026-05-21 13:42:34.952506+07
-4	1	float	float	real	4	f	2026-05-21 14:24:13.808788	2026-05-21 13:42:34.952506+07
-3	1	bytes	bytes	varbinary	13	f	2026-05-22 11:28:28.287078	2026-05-21 13:42:34.952506+07
-12	2	bytes	bytes	bytea	13	f	2026-05-22 11:28:28.334963	2026-05-21 13:42:34.952506+07
-5	1	double	double	float	5	f	2026-05-21 14:24:13.851208	2026-05-21 13:42:34.952506+07
-6	1	boolean	boolean	bit	6	f	2026-05-21 14:24:13.894088	2026-05-21 13:42:34.952506+07
-22	3	bytes	bytes	blob	13	f	2026-05-22 11:28:28.421308	2026-05-21 13:42:34.952506+07
-21	3	long	timestamp-millis	datetime	22	f	2026-05-22 11:28:28.467148	2026-05-21 13:42:34.952506+07
-13	2	float	float	real	4	f	2026-05-21 14:24:14.105585	2026-05-21 13:42:34.952506+07
-14	2	double	double	double precision	5	f	2026-05-21 14:24:14.149174	2026-05-21 13:42:34.952506+07
-15	2	boolean	boolean	boolean	6	f	2026-05-21 14:24:14.192574	2026-05-21 13:42:34.952506+07
-30	4	long	timestamp-micros	timestamp	12	f	2026-05-22 11:28:27.625527	2026-05-21 13:42:34.952506+07
-31	4	bytes	bytes	long raw	13	f	2026-05-22 11:31:54.667924	2026-05-21 13:42:34.952506+07
-16	2	string	enum	enum	29	t	2026-05-22 11:28:27.669773	2026-05-21 13:42:34.952506+07
-29	4	int	int	number(3)	17	t	2026-05-22 11:31:54.723424	2026-05-21 13:42:34.952506+07
-20	3	int	int	smallint	18	t	2026-05-22 11:28:27.808796	2026-05-21 13:42:34.952506+07
-7	1	string	string	hierarchyid	8	t	2026-05-21 15:03:20.906728	2026-05-21 13:42:34.952506+07
-35	4	string	datetime-offset	timestamp with time zone	25	t	2026-05-22 11:31:54.932213	2026-05-21 13:42:34.952506+07
-1	1	int	int	int	1	t	2026-05-21 15:03:20.966078	2026-05-21 13:42:34.952506+07
-10	2	int	int	integer	1	t	2026-05-21 15:03:21.015844	2026-05-21 13:42:34.952506+07
-32	4	float	float	binary_float	4	f	2026-05-21 14:29:15.20251	2026-05-21 13:42:34.952506+07
-33	4	double	double	binary_double	5	f	2026-05-21 14:29:15.24771	2026-05-21 13:42:34.952506+07
-34	4	boolean	boolean	number(1)	6	f	2026-05-21 14:29:15.294371	2026-05-21 13:42:34.952506+07
-26	3	string	spatial	geometry	26	t	2026-05-22 11:28:28.553482	2026-05-21 13:42:34.952506+07
+COPY public.datatype_raw_mapping (id, db_id, raw_type, logical_type, source_type, standard_id, is_default, updated_at, created_at, max_length, numeric_precision, numeric_scale) FROM stdin;
+779	6	int	int	int	1	f	2026-05-25 13:32:33.607608	2026-05-25 13:32:33.607608+07	\N	\N	\N
+155	2	int	int	smallint	18	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+156	2	long	timestamp-millis	timestamptz	25	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+17	2	string	json	jsonb	15	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+27	3	string	json	json	15	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+36	4	string	xml	xmltype	16	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+60	2	string	xml	xml	16	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+2	1	long	long	bigint	2	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+3	1	bytes	decimal	decimal	3	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+4	1	float	float	real	4	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+5	1	double	double	float	5	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+6	1	boolean	boolean	bit	6	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+8	1	string	uuid	uniqueidentifier	14	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+9	1	long	timestamp-millis	datetime	22	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+11	2	long	long	bigint	2	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+12	2	bytes	decimal	numeric	3	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+13	2	float	float	real	4	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+14	2	double	double	double precision	5	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+15	2	boolean	boolean	boolean	6	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+18	2	string	uuid	uuid	14	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+21	3	long	long	bigint	2	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+22	3	bytes	decimal	decimal	3	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+23	3	float	float	float	4	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+24	3	double	double	double	5	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+25	3	boolean	boolean	tinyint(1)	6	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+52	1	string	datetime-offset	datetimeoffset	25	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+40	1	int	date	date	10	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+153	4	string	interval	interval day to second	27	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+154	4	string	interval	interval year to month	27	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+57	2	int	date	date	10	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+63	3	int	date	date	10	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+146	3	int	date	year	10	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+41	1	int	time	time	11	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+157	1	string	json	json	15	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+58	2	long	time	time	11	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+64	3	int	time	time	11	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+44	1	string	xml	xml	16	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+30	4	long	long	number(19)	2	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+31	4	bytes	decimal	number	3	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+32	4	float	float	binary_float	4	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+33	4	double	double	binary_double	5	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+34	4	boolean	boolean	number(1)	6	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+38	1	string	string	char	7	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+39	1	string	string	text	9	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+45	1	int	int	tinyint	17	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+46	1	int	int	smallint	18	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+47	1	string	string	nvarchar	19	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+48	1	string	string	nchar	20	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+49	1	string	string	ntext	21	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+50	1	long	timestamp-micros	datetime2	23	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+51	1	long	timestamp-millis	smalldatetime	24	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+53	1	bytes	decimal	money	3	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+54	1	bytes	decimal	smallmoney	3	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+55	2	string	string	char	7	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+56	2	string	string	text	9	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+61	3	string	string	char	7	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+62	3	string	string	text	9	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+67	4	string	string	char	7	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+68	4	string	string	clob	9	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+70	4	long	timestamp-millis	date	22	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+137	1	string	spatial	geometry	26	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+138	1	string	spatial	geography	26	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+140	2	string	interval	interval	27	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+141	2	string	network	inet	28	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+142	2	string	network	cidr	28	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+143	2	string	network	macaddr	28	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+144	2	string	spatial	geometry	26	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+147	3	string	enum	enum	29	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+148	3	string	enum	set	29	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+151	4	string	string	long	9	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+7	1	string	string	varchar	8	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+16	2	string	string	varchar	8	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+26	3	string	string	varchar	8	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+35	4	string	string	varchar2	8	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+139	1	string	string	hierarchyid	8	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+1	1	int	int	int	1	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+10	2	int	int	integer	1	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+20	3	int	int	int	1	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+29	4	int	int	number(10)	1	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+145	3	int	int	mediumint	1	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+19	2	long	timestamp-micros	timestamp	12	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+28	3	long	timestamp-millis	timestamp	12	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+37	4	long	timestamp-micros	timestamp	12	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+158	2	string	enum	enum	29	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+160	3	long	timestamp-micros	datetime(6)	12	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+161	3	int	int	tinyint	17	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+162	3	int	int	smallint	18	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+163	3	string	string	nvarchar	19	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+164	3	string	uuid	char(36)	14	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+152	4	bytes	bytes	bfile	13	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+42	1	bytes	bytes	binary	13	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+165	4	string	json	json	15	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+166	4	string	spatial	sdo_geometry	26	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+167	4	string	uuid	raw(16)	14	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+168	4	int	int	smallint	18	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+169	1	bytes	bytes	timestamp	12	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+43	1	bytes	bytes	varbinary	13	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+59	2	bytes	bytes	bytea	13	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+65	3	bytes	bytes	binary	13	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+66	3	bytes	bytes	blob	13	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+183	3	long	timestamp-millis	datetime	22	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+186	3	string	datetime-offset	varchar(35)	25	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+187	3	string	spatial	geometry	26	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+69	4	bytes	bytes	blob	13	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+149	4	bytes	bytes	raw	13	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+190	4	int	date	date	10	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+150	4	bytes	bytes	long raw	13	t	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+194	4	int	int	number(3)	17	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+195	4	string	string	nvarchar2	19	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+196	4	string	string	nchar	20	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+197	4	string	string	nclob	21	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
+200	4	string	datetime-offset	timestamp with time zone	25	f	2026-05-26 09:06:54.613575	2026-05-26 09:06:54.613575+07	\N	\N	\N
 \.
 
 
 --
--- TOC entry 5099 (class 0 OID 16721)
+-- TOC entry 5123 (class 0 OID 16721)
 -- Dependencies: 223
 -- Data for Name: datatype_standard; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.datatype_standard (id, standard_type, category, description) FROM stdin;
-1	INTEGER	numeric	\N
-2	BIGINT	numeric	\N
-3	DECIMAL	numeric	\N
-4	FLOAT	numeric	\N
-5	DOUBLE PRECISION	numeric	\N
-6	BOOLEAN	boolean	\N
-7	CHAR	string	\N
-8	VARCHAR	string	\N
-9	TEXT	string	\N
-10	DATE	datetime	\N
-11	TIME	datetime	\N
-12	TIMESTAMP	datetime	\N
-13	BINARY	binary	\N
-14	UUID	other	\N
-15	JSON	other	\N
-16	XML	other	\N
-17	TINYINT	numeric	\N
-18	SMALLINT	numeric	\N
-19	NVARCHAR	string	\N
-20	NCHAR	string	\N
-21	NTEXT	string	\N
-22	DATETIME	datetime	\N
-23	DATETIME2	datetime	\N
-24	SMALLDATETIME	datetime	\N
-25	DATETIMEOFFSET	datetime	\N
-26	GEOMETRY	spatial	Spatial and geometry data (e.g., points, polygons)
-27	INTERVAL	datetime	Time span or interval
-28	NETWORK	other	IP addresses and network types (e.g., INET, CIDR)
-29	ENUM	other	Enumerated list of values or sets
-30	REAL	numeric	Single-precision floating-point, used in PostgreSQL, SQL Server, Oracle (BINARY_FLOAT)
-31	MONEY	numeric	Currency/monetary value, used in SQL Server (MONEY, SMALLMONEY) and PostgreSQL
-32	CLOB	string	Character Large Object for large text, used in Oracle (CLOB, NCLOB, LONG) and DB2
-33	BLOB	binary	Binary Large Object, used in Oracle, MySQL, MariaDB (BLOB, TINYBLOB, MEDIUMBLOB, LONGBLOB)
-34	BYTEA	binary	Binary data type in PostgreSQL (bytea)
-35	YEAR	datetime	4-digit or 2-digit year value, used in MySQL and MariaDB (YEAR)
-36	TIMESTAMP WITH TIME ZONE	datetime	Timestamp with timezone offset, used in PostgreSQL (TIMESTAMPTZ) and Oracle
-37	JSONB	other	Binary JSON with indexing support, used in PostgreSQL (jsonb)
-38	ARRAY	other	Array/list of values, used in PostgreSQL, BigQuery, Snowflake, Spark
-39	GEOGRAPHY	spatial	Geographic spatial data (ellipsoidal), used in SQL Server and PostGIS
-40	VARIANT	other	Semi-structured data container, used in Snowflake (VARIANT, OBJECT, ARRAY)
-41	STRUCT	other	Nested record/struct type, used in BigQuery (STRUCT/RECORD) and Spark
-42	MAP	other	Key-value map type, used in BigQuery, Spark, Cassandra, Hive
-43	HSTORE	other	Key-value store within a single PostgreSQL value (hstore)
-44	HIERARCHYID	other	Represents position in a hierarchy tree, used in SQL Server
-45	ROWID	other	Physical row address/identifier, used in Oracle (ROWID, UROWID)
-46	RAW	binary	Fixed-length raw binary data in Oracle (RAW, LONG RAW, BFILE)
-47	NUMBER	numeric	Flexible precision numeric type in Oracle (NUMBER(p,s))
-48	VARCHAR2	string	Variable-length character string in Oracle (VARCHAR2, NVARCHAR2)
-49	BIT VARYING	binary	Variable-length bit string in PostgreSQL (BIT VARYING(n))
-50	CIDR	other	Network address types in PostgreSQL (CIDR, MACADDR, MACADDR8)
-51	TIME WITH TIME ZONE	datetime	Time with timezone offset, used in PostgreSQL (TIMETZ) and Oracle
-52	SMALLMONEY	numeric	Small monetary value in SQL Server (SMALLMONEY)
-53	CURSOR	other	Cursor/reference type, used in SQL Server and PostgreSQL (REFCURSOR)
+COPY public.datatype_standard (id, standard_type, category, description, data_category, has_length_parameter, is_alias_of) FROM stdin;
+1	INTEGER	numeric	\N	\N	f	\N
+2	BIGINT	numeric	\N	\N	f	\N
+5	DOUBLE PRECISION	numeric	\N	\N	f	\N
+6	BOOLEAN	boolean	\N	\N	f	\N
+9	TEXT	string	\N	\N	f	\N
+10	DATE	datetime	\N	\N	f	\N
+11	TIME	datetime	\N	\N	f	\N
+12	TIMESTAMP	datetime	\N	\N	f	\N
+14	UUID	other	\N	\N	f	\N
+15	JSON	other	\N	\N	f	\N
+16	XML	other	\N	\N	f	\N
+17	TINYINT	numeric	\N	\N	f	\N
+18	SMALLINT	numeric	\N	\N	f	\N
+21	NTEXT	string	\N	\N	f	\N
+24	SMALLDATETIME	datetime	\N	\N	f	\N
+26	GEOMETRY	spatial	Spatial and geometry data (e.g., points, polygons)	\N	f	\N
+27	INTERVAL	datetime	Time span or interval	\N	f	\N
+28	NETWORK	other	IP addresses and network types (e.g., INET, CIDR)	\N	f	\N
+29	ENUM	other	Enumerated list of values or sets	\N	f	\N
+31	MONEY	numeric	Currency/monetary value, used in SQL Server (MONEY, SMALLMONEY) and PostgreSQL	\N	f	\N
+33	BLOB	binary	Binary Large Object, used in Oracle, MySQL, MariaDB (BLOB, TINYBLOB, MEDIUMBLOB, LONGBLOB)	\N	f	\N
+35	YEAR	datetime	4-digit or 2-digit year value, used in MySQL and MariaDB (YEAR)	\N	f	\N
+36	TIMESTAMP WITH TIME ZONE	datetime	Timestamp with timezone offset, used in PostgreSQL (TIMESTAMPTZ) and Oracle	\N	f	\N
+38	ARRAY	other	Array/list of values, used in PostgreSQL, BigQuery, Snowflake, Spark	\N	f	\N
+39	GEOGRAPHY	spatial	Geographic spatial data (ellipsoidal), used in SQL Server and PostGIS	\N	f	\N
+40	VARIANT	other	Semi-structured data container, used in Snowflake (VARIANT, OBJECT, ARRAY)	\N	f	\N
+41	STRUCT	other	Nested record/struct type, used in BigQuery (STRUCT/RECORD) and Spark	\N	f	\N
+42	MAP	other	Key-value map type, used in BigQuery, Spark, Cassandra, Hive	\N	f	\N
+43	HSTORE	other	Key-value store within a single PostgreSQL value (hstore)	\N	f	\N
+44	HIERARCHYID	other	Represents position in a hierarchy tree, used in SQL Server	\N	f	\N
+45	ROWID	other	Physical row address/identifier, used in Oracle (ROWID, UROWID)	\N	f	\N
+50	CIDR	other	Network address types in PostgreSQL (CIDR, MACADDR, MACADDR8)	\N	f	\N
+51	TIME WITH TIME ZONE	datetime	Time with timezone offset, used in PostgreSQL (TIMETZ) and Oracle	\N	f	\N
+52	SMALLMONEY	numeric	Small monetary value in SQL Server (SMALLMONEY)	\N	f	\N
+53	CURSOR	other	Cursor/reference type, used in SQL Server and PostgreSQL (REFCURSOR)	\N	f	\N
+3	DECIMAL	numeric	\N	\N	t	\N
+4	FLOAT	numeric	\N	\N	t	\N
+7	CHAR	string	\N	\N	t	\N
+8	VARCHAR	string	\N	\N	t	\N
+13	BINARY	binary	\N	\N	t	\N
+19	NVARCHAR	string	\N	\N	t	\N
+20	NCHAR	string	\N	\N	t	\N
+30	REAL	numeric	Single-precision floating-point, used in PostgreSQL, SQL Server, Oracle (BINARY_FLOAT)	\N	t	\N
+46	RAW	binary	Fixed-length raw binary data in Oracle (RAW, LONG RAW, BFILE)	\N	t	\N
+49	BIT VARYING	binary	Variable-length bit string in PostgreSQL (BIT VARYING(n))	\N	t	\N
+48	VARCHAR2	string	Variable-length character string in Oracle (VARCHAR2, NVARCHAR2)	\N	t	8
+37	JSONB	other	Binary JSON with indexing support, used in PostgreSQL (jsonb)	\N	f	15
+34	BYTEA	binary	Binary data type in PostgreSQL (bytea)	\N	f	33
+32	CLOB	string	Character Large Object for large text, used in Oracle (CLOB, NCLOB, LONG) and DB2	\N	f	9
+47	NUMBER	numeric	Flexible precision numeric type in Oracle (NUMBER(p,s))	\N	t	3
+22	DATETIME	datetime	\N	\N	f	12
+23	DATETIME2	datetime	\N	\N	f	12
+25	DATETIMEOFFSET	datetime	\N	\N	f	36
 \.
 
 
 --
--- TOC entry 5107 (class 0 OID 16964)
+-- TOC entry 5131 (class 0 OID 16964)
 -- Dependencies: 231
 -- Data for Name: mapping_rules; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -989,59 +1255,91 @@ COPY public.mapping_rules (id, src_db, source_type, raw_type, logical_type, mast
 429	oracle	nclob	string	string	NTEXT	sqlserver	ntext	100	synced	2026-05-21 00:00:00	\N	2026-05-22 11:31:54.84568+07	0
 432	oracle	nclob	string	string	NTEXT	oracle	nclob	100	synced	2026-05-21 00:00:00	\N	2026-05-22 11:31:54.88479+07	0
 435	oracle	timestamp with time zone	string	datetime-offset	DATETIMEOFFSET	mysql	datetime	100	synced	2026-05-21 00:00:00	\N	2026-05-22 11:31:54.925606+07	0
+440	mariadb	int	int	int	INTEGER	mariadb	int	100	synced	2026-05-25 00:00:00	\N	2026-05-25 13:32:33.625811+07	0
+441	mariadb	Tinyint	int	int	TINYINT	mariadb	Tinyint	100	error	2026-05-26 00:00:00	DATABASE_ERROR	\N	1
 \.
 
 
 --
--- TOC entry 5104 (class 0 OID 16883)
+-- TOC entry 5128 (class 0 OID 16883)
 -- Dependencies: 228
 -- Data for Name: session_records; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.session_records (id, "user", role, db, tables, ttl_minutes, created, status_cache) FROM stdin;
-auth-admin	admin	admin	admin-console	0	60	2026-05-25 04:33:01	active
+auth-perm	perm	editor	admin-console	0	60	2026-05-26 06:39:22	active
 \.
 
 
 --
--- TOC entry 5105 (class 0 OID 16905)
+-- TOC entry 5129 (class 0 OID 16905)
 -- Dependencies: 229
 -- Data for Name: system_settings; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.system_settings (key, value) FROM stdin;
+maintenance_reason	กำลังอัพเดต database เพิ่มเติม
+maintenance_mode	false
 \.
 
 
 --
--- TOC entry 5115 (class 0 OID 0)
+-- TOC entry 5133 (class 0 OID 17048)
+-- Dependencies: 233
+-- Data for Name: update_activities; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.update_activities (id, username, action, target_type, target_id, summary, detail, created_at) FROM stdin;
+1	admin	create	mapping	440	สร้าง mapping: int (mariadb → mariadb)	{"after": {"id": 440, "src_db": "mariadb", "raw_type": "int", "source_type": "int", "logical_type": "int", "master_type": "INTEGER", "dest_db": "mariadb", "final_type": "int", "confidence": 100, "status": "pending", "updated": "2026-05-25T00:00:00", "error_message": null, "synced_at": null, "retry_count": 0}}	2026-05-25 13:29:36.303227+07
+2	admin	create	user	2	สร้างผู้ใช้ใหม่: perm (role: editor)	{"after": {"id": 2, "username": "perm", "role": "editor", "display_name": "พี่เปรม", "is_active": true, "created_at": "2026-05-25T06:45:06.132104+00:00", "last_login": null}}	2026-05-25 13:45:06.13511+07
+3	admin	delete	user	2	ลบผู้ใช้: perm (role: editor)	{"before": {"id": 2, "username": "perm", "role": "editor", "display_name": "พี่เปรม", "is_active": true, "created_at": "2026-05-25T06:45:06.132104+00:00", "last_login": null}}	2026-05-25 13:46:09.863656+07
+4	admin	create	user	3	สร้างผู้ใช้ใหม่: perm (role: editor)	{"after": {"id": 3, "username": "perm", "role": "editor", "display_name": "พี่เปรม", "is_active": true, "created_at": "2026-05-25T06:46:33.310220+00:00", "last_login": null}}	2026-05-25 13:46:33.311933+07
+5	admin	delete	user	3	ลบผู้ใช้: perm (role: editor)	{"before": {"id": 3, "username": "perm", "role": "editor", "display_name": "พี่เปรม", "is_active": true, "created_at": "2026-05-25T06:46:33.310220+00:00", "last_login": null}}	2026-05-25 13:48:22.500691+07
+6	admin	create	user	4	สร้างผู้ใช้ใหม่: perm (role: viewer)	{"after": {"id": 4, "username": "perm", "role": "viewer", "display_name": "พี่เปรม", "is_active": true, "created_at": "2026-05-25T06:48:46.745536+00:00", "last_login": null}}	2026-05-25 13:48:46.748013+07
+7	admin	delete	user	4	ลบผู้ใช้: perm (role: viewer)	{"before": {"id": 4, "username": "perm", "role": "viewer", "display_name": "พี่เปรม", "is_active": true, "created_at": "2026-05-25T06:48:46.745536+00:00", "last_login": null}}	2026-05-25 13:51:50.795484+07
+8	admin	create	user	5	สร้างผู้ใช้ใหม่: perm (role: editor)	{"after": {"id": 5, "username": "perm", "role": "editor", "display_name": "พี่เปรม", "is_active": true, "created_at": "2026-05-25T06:52:09.483071+00:00", "last_login": null}}	2026-05-25 13:52:09.486621+07
+9	perm	create	mapping	441	สร้าง mapping: int (mariadb → mariadb)	{"after": {"id": 441, "src_db": "mariadb", "raw_type": "int", "source_type": "Tinyint", "logical_type": "int", "master_type": "TINYINT", "dest_db": "mariadb", "final_type": "Tinyint", "confidence": 100, "status": "pending", "updated": "2026-05-26T00:00:00", "error_message": null, "synced_at": null, "retry_count": 0}}	2026-05-26 13:41:42.456742+07
+\.
+
+
+--
+-- TOC entry 5152 (class 0 OID 0)
+-- Dependencies: 234
+-- Name: admin_users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.admin_users_id_seq', 5, true);
+
+
+--
+-- TOC entry 5153 (class 0 OID 0)
 -- Dependencies: 226
 -- Name: database_records_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.database_records_id_seq', 14, true);
+SELECT pg_catalog.setval('public.database_records_id_seq', 6, true);
 
 
 --
--- TOC entry 5116 (class 0 OID 0)
+-- TOC entry 5154 (class 0 OID 0)
 -- Dependencies: 221
 -- Name: datatype_mapping_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.datatype_mapping_id_seq', 726, true);
+SELECT pg_catalog.setval('public.datatype_mapping_id_seq', 727, true);
 
 
 --
--- TOC entry 5117 (class 0 OID 0)
+-- TOC entry 5155 (class 0 OID 0)
 -- Dependencies: 222
 -- Name: datatype_raw_mapping_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.datatype_raw_mapping_id_seq', 778, true);
+SELECT pg_catalog.setval('public.datatype_raw_mapping_id_seq', 779, true);
 
 
 --
--- TOC entry 5118 (class 0 OID 0)
+-- TOC entry 5156 (class 0 OID 0)
 -- Dependencies: 220
 -- Name: datatype_standard_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -1050,7 +1348,7 @@ SELECT pg_catalog.setval('public.datatype_standard_id_seq', 53, true);
 
 
 --
--- TOC entry 5119 (class 0 OID 0)
+-- TOC entry 5157 (class 0 OID 0)
 -- Dependencies: 219
 -- Name: db_type_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -1059,16 +1357,43 @@ SELECT pg_catalog.setval('public.db_type_id_seq', 4, true);
 
 
 --
--- TOC entry 5120 (class 0 OID 0)
+-- TOC entry 5158 (class 0 OID 0)
 -- Dependencies: 230
 -- Name: mapping_rules_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.mapping_rules_id_seq', 439, true);
+SELECT pg_catalog.setval('public.mapping_rules_id_seq', 441, true);
 
 
 --
--- TOC entry 4929 (class 2606 OID 16882)
+-- TOC entry 5159 (class 0 OID 0)
+-- Dependencies: 232
+-- Name: update_activities_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.update_activities_id_seq', 9, true);
+
+
+--
+-- TOC entry 4961 (class 2606 OID 17085)
+-- Name: admin_users admin_users_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.admin_users
+    ADD CONSTRAINT admin_users_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4963 (class 2606 OID 17087)
+-- Name: admin_users admin_users_username_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.admin_users
+    ADD CONSTRAINT admin_users_username_key UNIQUE (username);
+
+
+--
+-- TOC entry 4942 (class 2606 OID 16882)
 -- Name: database_records database_records_key_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1077,7 +1402,7 @@ ALTER TABLE ONLY public.database_records
 
 
 --
--- TOC entry 4931 (class 2606 OID 16880)
+-- TOC entry 4944 (class 2606 OID 16880)
 -- Name: database_records database_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1086,7 +1411,7 @@ ALTER TABLE ONLY public.database_records
 
 
 --
--- TOC entry 4910 (class 2606 OID 16747)
+-- TOC entry 4927 (class 2606 OID 16747)
 -- Name: datatype_mapping datatype_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1095,7 +1420,7 @@ ALTER TABLE ONLY public.datatype_mapping
 
 
 --
--- TOC entry 4917 (class 2606 OID 16769)
+-- TOC entry 4935 (class 2606 OID 16769)
 -- Name: datatype_raw_mapping datatype_raw_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1104,7 +1429,7 @@ ALTER TABLE ONLY public.datatype_raw_mapping
 
 
 --
--- TOC entry 4906 (class 2606 OID 16730)
+-- TOC entry 4923 (class 2606 OID 16730)
 -- Name: datatype_standard datatype_standard_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1113,7 +1438,7 @@ ALTER TABLE ONLY public.datatype_standard
 
 
 --
--- TOC entry 4908 (class 2606 OID 16732)
+-- TOC entry 4925 (class 2606 OID 16732)
 -- Name: datatype_standard datatype_standard_standard_type_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1122,7 +1447,7 @@ ALTER TABLE ONLY public.datatype_standard
 
 
 --
--- TOC entry 4939 (class 2606 OID 16989)
+-- TOC entry 4952 (class 2606 OID 16989)
 -- Name: mapping_rules mapping_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1131,7 +1456,7 @@ ALTER TABLE ONLY public.mapping_rules
 
 
 --
--- TOC entry 4934 (class 2606 OID 16894)
+-- TOC entry 4947 (class 2606 OID 16894)
 -- Name: session_records session_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1140,7 +1465,7 @@ ALTER TABLE ONLY public.session_records
 
 
 --
--- TOC entry 4936 (class 2606 OID 16911)
+-- TOC entry 4949 (class 2606 OID 16911)
 -- Name: system_settings system_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1149,7 +1474,7 @@ ALTER TABLE ONLY public.system_settings
 
 
 --
--- TOC entry 4913 (class 2606 OID 16798)
+-- TOC entry 4931 (class 2606 OID 16798)
 -- Name: datatype_mapping uniq_final_mapping; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1158,16 +1483,7 @@ ALTER TABLE ONLY public.datatype_mapping
 
 
 --
--- TOC entry 4921 (class 2606 OID 16800)
--- Name: datatype_raw_mapping uniq_raw_mapping; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.datatype_raw_mapping
-    ADD CONSTRAINT uniq_raw_mapping UNIQUE (db_id, raw_type, source_type);
-
-
---
--- TOC entry 4923 (class 2606 OID 16781)
+-- TOC entry 4940 (class 2606 OID 16781)
 -- Name: datatype_raw_mapping unique_mapping_idx; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1176,7 +1492,16 @@ ALTER TABLE ONLY public.datatype_raw_mapping
 
 
 --
--- TOC entry 4915 (class 2606 OID 16944)
+-- TOC entry 4959 (class 2606 OID 17061)
+-- Name: update_activities update_activities_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.update_activities
+    ADD CONSTRAINT update_activities_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4933 (class 2606 OID 16944)
 -- Name: datatype_mapping uq_datatype_mapping; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1185,16 +1510,7 @@ ALTER TABLE ONLY public.datatype_mapping
 
 
 --
--- TOC entry 4925 (class 2606 OID 16937)
--- Name: datatype_raw_mapping uq_datatype_raw_mapping_db_raw; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.datatype_raw_mapping
-    ADD CONSTRAINT uq_datatype_raw_mapping_db_raw UNIQUE (db_id, raw_type);
-
-
---
--- TOC entry 4941 (class 2606 OID 16991)
+-- TOC entry 4954 (class 2606 OID 16991)
 -- Name: mapping_rules uq_mapping_rules; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1203,16 +1519,15 @@ ALTER TABLE ONLY public.mapping_rules
 
 
 --
--- TOC entry 4927 (class 2606 OID 16941)
--- Name: datatype_raw_mapping uq_raw_mapping; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- TOC entry 4928 (class 1259 OID 17021)
+-- Name: idx_mapping_db_standard; Type: INDEX; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.datatype_raw_mapping
-    ADD CONSTRAINT uq_raw_mapping UNIQUE (db_id, raw_type);
+CREATE INDEX idx_mapping_db_standard ON public.datatype_mapping USING btree (db_id, standard_id);
 
 
 --
--- TOC entry 4937 (class 1259 OID 16992)
+-- TOC entry 4950 (class 1259 OID 16992)
 -- Name: idx_mapping_lookup; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1220,7 +1535,47 @@ CREATE INDEX idx_mapping_lookup ON public.mapping_rules USING btree (src_db, sou
 
 
 --
--- TOC entry 4911 (class 1259 OID 16932)
+-- TOC entry 4936 (class 1259 OID 17022)
+-- Name: idx_raw_mapping_db; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_raw_mapping_db ON public.datatype_raw_mapping USING btree (db_id);
+
+
+--
+-- TOC entry 4955 (class 1259 OID 17063)
+-- Name: ix_activity_action; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_activity_action ON public.update_activities USING btree (action);
+
+
+--
+-- TOC entry 4956 (class 1259 OID 17064)
+-- Name: ix_activity_created_at; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_activity_created_at ON public.update_activities USING btree (created_at);
+
+
+--
+-- TOC entry 4957 (class 1259 OID 17062)
+-- Name: ix_activity_user; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_activity_user ON public.update_activities USING btree (username);
+
+
+--
+-- TOC entry 4964 (class 1259 OID 17088)
+-- Name: ix_admin_user_username; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX ix_admin_user_username ON public.admin_users USING btree (username);
+
+
+--
+-- TOC entry 4929 (class 1259 OID 16932)
 -- Name: ix_datatype_mapping_db_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1228,7 +1583,7 @@ CREATE INDEX ix_datatype_mapping_db_id ON public.datatype_mapping USING btree (d
 
 
 --
--- TOC entry 4918 (class 1259 OID 16930)
+-- TOC entry 4937 (class 1259 OID 16930)
 -- Name: ix_raw_mapping_db_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1236,7 +1591,7 @@ CREATE INDEX ix_raw_mapping_db_id ON public.datatype_raw_mapping USING btree (db
 
 
 --
--- TOC entry 4919 (class 1259 OID 16931)
+-- TOC entry 4938 (class 1259 OID 16931)
 -- Name: ix_raw_mapping_standard_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1244,7 +1599,7 @@ CREATE INDEX ix_raw_mapping_standard_id ON public.datatype_raw_mapping USING btr
 
 
 --
--- TOC entry 4932 (class 1259 OID 16925)
+-- TOC entry 4945 (class 1259 OID 16925)
 -- Name: uq_db_record_key_lower; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1252,7 +1607,7 @@ CREATE UNIQUE INDEX uq_db_record_key_lower ON public.database_records USING btre
 
 
 --
--- TOC entry 4946 (class 2620 OID 16935)
+-- TOC entry 4970 (class 2620 OID 16935)
 -- Name: datatype_mapping trg_datatype_mapping_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -1260,7 +1615,7 @@ CREATE TRIGGER trg_datatype_mapping_updated_at BEFORE UPDATE ON public.datatype_
 
 
 --
--- TOC entry 4947 (class 2620 OID 16934)
+-- TOC entry 4971 (class 2620 OID 16934)
 -- Name: datatype_raw_mapping trg_raw_mapping_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -1268,16 +1623,25 @@ CREATE TRIGGER trg_raw_mapping_updated_at BEFORE UPDATE ON public.datatype_raw_m
 
 
 --
--- TOC entry 4944 (class 2606 OID 16918)
+-- TOC entry 4965 (class 2606 OID 17016)
+-- Name: datatype_standard datatype_standard_is_alias_of_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.datatype_standard
+    ADD CONSTRAINT datatype_standard_is_alias_of_fkey FOREIGN KEY (is_alias_of) REFERENCES public.datatype_standard(id);
+
+
+--
+-- TOC entry 4968 (class 2606 OID 17000)
 -- Name: datatype_raw_mapping fk_db; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.datatype_raw_mapping
-    ADD CONSTRAINT fk_db FOREIGN KEY (db_id) REFERENCES public.database_records(id);
+    ADD CONSTRAINT fk_db FOREIGN KEY (db_id) REFERENCES public.database_records(id) ON UPDATE CASCADE;
 
 
 --
--- TOC entry 4942 (class 2606 OID 16995)
+-- TOC entry 4966 (class 2606 OID 16995)
 -- Name: datatype_mapping fk_mapping_db; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1286,28 +1650,28 @@ ALTER TABLE ONLY public.datatype_mapping
 
 
 --
--- TOC entry 4943 (class 2606 OID 16753)
+-- TOC entry 4967 (class 2606 OID 17005)
 -- Name: datatype_mapping fk_mapping_standard; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.datatype_mapping
-    ADD CONSTRAINT fk_mapping_standard FOREIGN KEY (standard_id) REFERENCES public.datatype_standard(id);
+    ADD CONSTRAINT fk_mapping_standard FOREIGN KEY (standard_id) REFERENCES public.datatype_standard(id) ON UPDATE CASCADE;
 
 
 --
--- TOC entry 4945 (class 2606 OID 16775)
+-- TOC entry 4969 (class 2606 OID 17010)
 -- Name: datatype_raw_mapping fk_standard; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.datatype_raw_mapping
-    ADD CONSTRAINT fk_standard FOREIGN KEY (standard_id) REFERENCES public.datatype_standard(id);
+    ADD CONSTRAINT fk_standard FOREIGN KEY (standard_id) REFERENCES public.datatype_standard(id) ON UPDATE CASCADE;
 
 
--- Completed on 2026-05-25 11:43:09
+-- Completed on 2026-05-26 14:03:45
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict A3V70jQ5SgkZUCs01RtzhrELL9YSKHJ3Yr5Dl3xet3E1AcyUJTLJ4JHYbyof1yA
+\unrestrict UN6EyRn5Oh1Ez2JwZ7oRlAmw96ZqaMCQanOetO9igQKVfcNhWI3OMfhSvrwfFa8
 

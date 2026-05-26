@@ -96,7 +96,7 @@ async def _process_row(rule_id: int, rule_data: dict) -> dict:
                         (db_id, source_type, raw_type, logical_type, standard_id)
                     VALUES
                         (:db_id, :source_type, :raw_type, :logical_type, :standard_id)
-                    ON CONFLICT (db_id, raw_type)
+                    ON CONFLICT (db_id, raw_type, source_type)
                     DO UPDATE SET
                         source_type  = EXCLUDED.source_type,
                         logical_type = EXCLUDED.logical_type,
