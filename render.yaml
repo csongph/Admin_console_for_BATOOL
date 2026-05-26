@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: ba-tool-backend
+    runtime: python
+    rootDir: backend
+
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # กรอก Supabase connection string ใน Render Dashboard
+
+      - key: SECRET_KEY
+        generateValue: true
+
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+
+      - key: ENVIRONMENT
+        value: production
+
+      - key: ADMIN_USERNAME
+        value: admin
+
+      - key: ADMIN_PASSWORD
+        sync: false
