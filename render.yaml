@@ -2,10 +2,12 @@ services:
   - type: web
     name: ba-tool-backend
     runtime: python
-    rootDir: .                     # เริ่มทำงานจากโฟลเดอร์นอกสุดของโปรเจกต์
-    buildCommand: pip install -r backend/requirements.txt  # ชี้เป้าไปที่ในโฟลเดอร์ backend ตรงๆ
-    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT  # สั่งรันโดยวิ่งผ่าน backend เข้าไปหา app
+    rootDir: .
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.3"             # บังคับใช้ Python 3.12.3 ที่เสถียรที่สุด
       - key: DATABASE_URL
         fromDatabase:
           name: ba-tool-db
@@ -19,7 +21,7 @@ services:
       - key: ADMIN_USERNAME
         value: "admin"
       - key: ADMIN_PASSWORD
-        # เว้น value ไว้ เพื่อความปลอดภัย โดยคุณสามารถไปกรอกรหัสผ่านจริงได้ใน Render Dashboard
+        # ปล่อยว่างไว้เพื่อไปกรอกรหัสผ่านใน Render Dashboard เพื่อความปลอดภัย
 
 databases:
   - name: ba-tool-db
