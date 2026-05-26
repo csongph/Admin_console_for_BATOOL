@@ -1,0 +1,46 @@
+# Environment variables — ห้าม commit เด็ดขาด!
+.env
+.env.local
+.env.production
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads / temp
+uploads/
+temp/
+tmp/
+*.tmp
+
+# Database
+*.db
+*.sqlite3

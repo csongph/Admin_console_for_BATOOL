@@ -2,19 +2,17 @@ services:
   - type: web
     name: ba-tool-backend
     runtime: python
-    rootDir: .
+    rootDir: backend
 
     buildCommand: |
       pip install --upgrade pip
-      pip install -r backend/requirements.txt
+      pip install -r requirements.txt
 
-    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
 
     envVars:
       - key: DATABASE_URL
-      fromDatabase:
-          name: ba-tool-db
-          property: connectionString
+        sync: false  # กรอก Supabase connection string ใน Render Dashboard
 
       - key: SECRET_KEY
         generateValue: true
@@ -30,8 +28,3 @@ services:
 
       - key: ADMIN_PASSWORD
         sync: false
-
-databases:
-  - name: ba-tool-db
-    databaseName: ba_tool
-    user: ba_tool_user

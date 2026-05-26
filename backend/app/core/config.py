@@ -3,18 +3,15 @@ from typing import List, Optional
 
 
 class Settings(BaseSettings):
-    # ต้องตั้งค่าใน .env หรือ environment variable เสมอ — ไม่มี default ที่มี credentials
     DATABASE_URL: str
     SECRET_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     ENVIRONMENT: str = "development"
     PORT: int = 8000
 
-    # Admin credentials — อ่านจาก .env เท่านั้น ห้าม hardcode ในโค้ด
     ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str  # บังคับต้องตั้งใน .env
+    ADMIN_PASSWORD: str
 
-    # Anthropic — ใส่ใน .env เท่านั้น ห้าม hardcode
     ANTHROPIC_API_KEY: Optional[str] = None
 
     ALLOWED_ORIGINS: List[str] = [
@@ -29,12 +26,17 @@ class Settings(BaseSettings):
         "null",
         "https://ba-tool-for-multiple-db.vercel.app",
     ]
-    # จำกัดเฉพาะ vercel subdomain — ไม่เปิด http://* ทั้งหมด
     ALLOWED_ORIGIN_REGEX: Optional[str] = r"https://[a-zA-Z0-9-]+\.vercel\.app"
+
+    @property
+    def allowed_origins_with_render(self) -> List[str]:
+        """รวม Render service URL เข้าไปใน CORS origins อัตโนมัติ"""
+        origins = list(self.ALLOWED_ORIGINS)
+        origins.append("https://ba-tool-backend.onrender.com")
+        return origins
 
     class Config:
         env_file = ".env"
 
 
 settings = Settings()
-    
