@@ -3,25 +3,33 @@ services:
     name: ba-tool-backend
     runtime: python
     rootDir: .
-    buildCommand: pip install -r backend/requirements.txt
+
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r backend/requirements.txt
+
     startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.12.3"             # บังคับใช้ Python 3.12.3 ที่เสถียรที่สุด
       - key: DATABASE_URL
-        fromDatabase:
+      fromDatabase:
           name: ba-tool-db
           property: connectionString
+
       - key: SECRET_KEY
         generateValue: true
+
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "60"
+
       - key: ENVIRONMENT
         value: production
+
       - key: ADMIN_USERNAME
-        value: "admin"
+        value: admin
+
       - key: ADMIN_PASSWORD
-        # ปล่อยว่างไว้เพื่อไปกรอกรหัสผ่านใน Render Dashboard เพื่อความปลอดภัย
+        sync: false
 
 databases:
   - name: ba-tool-db

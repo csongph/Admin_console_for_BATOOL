@@ -31,7 +31,7 @@ app = FastAPI(
 # ── CORS ──────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.allowed_origins_with_render,
     allow_origin_regex=settings.ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -72,10 +72,10 @@ async def _seed_env_admin() -> None:
             ))
             logger.info("Seeded env superadmin '%s' into admin_users", settings.ADMIN_USERNAME)
         else:
-            # sync password ทุกครั้งที่ restart เผื่อ .env เปลี่ยน
-            user.hashed_pw = hashed
-            user.role      = "admin"   # ป้องกันไม่ให้ถูก downgrade
-            logger.info("Synced env superadmin '%s' password/role", settings.ADMIN_USERNAME)
+            # มี user อยู่แล้ว — คง password เดิมใน DB ไว้ ไม่ override
+            # แค่ ensure role=admin ไม่ให้ถูก downgrade
+            user.role = "admin"
+            logger.info("Env superadmin '%s' already exists — password kept as-is", settings.ADMIN_USERNAME)
 
         await db.commit()
 
