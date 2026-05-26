@@ -1550,8 +1550,9 @@ function switchSettings(section, btn) {
   document.querySelectorAll('.settings-section').forEach(s => s.classList.add('hidden'));
   const target = document.getElementById('settings-' + section);
   if (target) target.classList.remove('hidden');
-  if (section === 'users')     { fetchMyRole().then(() => fetchUsers()); }
+  if (section === 'users')                               { fetchMyRole().then(() => fetchUsers()); }
   if (section === 'security' || section === 'ratelimit') { _loadSettingsValues(); }
+  if (section === 'general')                             { fetchMyRole().then(() => loadMaintenanceState()); }
 }
 
 function saveSettings() { showToast('Settings saved successfully', 'success'); }
@@ -1564,6 +1565,116 @@ function rotateApiKey() {
   for (let i = 0; i < 24; i++) key += chars[Math.floor(Math.random() * chars.length)];
   input.value = key; input.type = 'text';
   showToast('API key rotated — remember to update your clients', 'warn');
+}
+
+// ════════════════════════════════════════════════════════════
+//  MAINTENANCE MODE
+// ════════════════════════════════════════════════════════════
+
+let _maintenanceActive = false;
+let _maintenancePollTimer = null;
+
+/** โหลดสถานะ maintenance จาก backend แล้วอัปเดต UI */
+async function loadMaintenanceState() {
+  const isAdmin = _currentRole === 'admin';
+  const group   = document.getElementById('maintenanceGroup');
+  if (group) group.style.display = isAdmin ? '' : 'none';
+  if (!isAdmin) return;
+
+  try {
+    const res    = await apiCall('/api/system/maintenance');
+    const active = res.data?.maintenance ?? false;
+    _maintenanceActive = active;
+    _applyMaintenanceUI(active);
+
+    // โหลด reason ด้วย
+    const rRes = await apiCall('/api/system/maintenance/reason');
+    const reasonEl = document.getElementById('maintenanceReason');
+    if (reasonEl && rRes.data?.reason) reasonEl.value = rRes.data.reason;
+  } catch (e) {
+    console.warn('loadMaintenanceState failed:', e.message);
+  }
+}
+
+/** อัปเดต UI ทั้งหมดตามสถานะ maintenance */
+function _applyMaintenanceUI(active) {
+  // Toggle checkbox
+  const toggle = document.getElementById('maintenanceToggle');
+  if (toggle) toggle.checked = active;
+
+  // Badge ใน heading
+  const badge = document.getElementById('maintenanceBadge');
+  if (badge) badge.style.display = active ? '' : 'none';
+
+  // Reason row — แสดงเฉพาะตอน active
+  const reasonRow = document.getElementById('maintenanceReasonRow');
+  if (reasonRow) reasonRow.style.display = active ? '' : 'none';
+
+  // Top banner — แจ้งเตือน admin ว่า maintenance เปิดอยู่
+  const banner = document.getElementById('maintenanceBanner');
+  if (banner) banner.style.display = active ? '' : 'none';
+
+  // Sidebar status dot
+  const dot   = document.getElementById('sidebarStatusDot');
+  const label = document.getElementById('sidebarStatusLabel');
+  if (dot) {
+    dot.className = active ? 'status-dot maintenance' : 'status-dot online';
+  }
+  if (label) {
+    label.textContent = active ? '🔧 Maintenance' : 'System Online';
+  }
+}
+
+/** เรียกเมื่อ admin toggle checkbox */
+async function onMaintenanceToggle(el, forceOff = false) {
+  const enabled = forceOff ? false : el.checked;
+
+  // ถ้าจะเปิด ให้ยืนยันก่อน
+  if (enabled && !confirm(
+    '⚠️ ยืนยันเปิด Maintenance Mode?\n\nผู้ใช้ทุกคนจะไม่สามารถใช้งาน BATOOL ได้ทันที\n(Admin ยังคงใช้งานได้ตามปกติ)'
+  )) {
+    // ยกเลิก — คืน toggle กลับ
+    const toggle = document.getElementById('maintenanceToggle');
+    if (toggle) toggle.checked = false;
+    return;
+  }
+
+  try {
+    const reason = document.getElementById('maintenanceReason')?.value.trim() || '';
+    await apiCall('/api/system/maintenance', {
+      method: 'POST',
+      body:   JSON.stringify({ enabled, reason }),
+    });
+    _maintenanceActive = enabled;
+    _applyMaintenanceUI(enabled);
+    showToast(
+      enabled ? '🔧 Maintenance Mode เปิดแล้ว — ผู้ใช้ถูกบล็อค' : '✅ Maintenance Mode ปิดแล้ว — ระบบกลับมาปกติ',
+      enabled ? 'warn' : 'success'
+    );
+
+    // sync toggle ที่อาจเป็น forceOff
+    const toggle = document.getElementById('maintenanceToggle');
+    if (toggle) toggle.checked = enabled;
+  } catch (e) {
+    showToast('เปลี่ยนสถานะ maintenance ล้มเหลว: ' + e.message, 'error');
+    // คืน checkbox กลับ
+    const toggle = document.getElementById('maintenanceToggle');
+    if (toggle) toggle.checked = _maintenanceActive;
+  }
+}
+
+/** บันทึก reason โดยไม่เปลี่ยนสถานะ */
+async function saveMaintenanceReason() {
+  const reason = document.getElementById('maintenanceReason')?.value.trim() || '';
+  try {
+    await apiCall('/api/system/maintenance', {
+      method: 'POST',
+      body:   JSON.stringify({ enabled: _maintenanceActive, reason }),
+    });
+    showToast('บันทึกข้อความสำเร็จ', 'success');
+  } catch (e) {
+    showToast('บันทึกล้มเหลว: ' + e.message, 'error');
+  }
 }
 
 // ── Security Settings ─────────────────────────────────────────────────────────
@@ -1915,6 +2026,7 @@ async function fetchMyRole() {
     const res = await apiCall('/api/auth/me');
     _currentRole = res.data?.role || 'viewer';
     _applyMappingRoleUI();
+    _applyUserAdminUI();
   } catch (_) { /* ignore */ }
 }
 
@@ -1952,7 +2064,7 @@ function _applyUserAdminUI() {
   const notice  = document.getElementById('userAdminNotice');
   const actHdr  = document.getElementById('userActionHeader');
   if (btn)    { btn.style.display    = isAdmin ? '' : 'none'; }
-  if (notice) { notice.classList[isAdmin ? 'add' : 'remove']('hidden'); notice.classList[!isAdmin ? 'add' : 'remove']('hidden'); }
+  if (notice) { notice.classList[isAdmin ? 'remove' : 'add']('hidden'); }
   if (actHdr) actHdr.textContent = isAdmin ? 'Actions' : '';
 }
 

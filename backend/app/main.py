@@ -11,6 +11,7 @@ from app.routers.presence import router as presence_router, _evict_stale
 from app.routers.activity import router as activity_router
 from app.routers.users    import router as users_router
 from app.middleware.logging_middleware import LoggingMiddleware
+from app.middleware.maintenance_middleware import MaintenanceMiddleware
 from app.db.database import init_db
 from app import sync_engine
 
@@ -38,6 +39,7 @@ app.add_middleware(
 )
 
 app.add_middleware(LoggingMiddleware)
+app.add_middleware(MaintenanceMiddleware)
 
 
 async def _seed_env_admin() -> None:

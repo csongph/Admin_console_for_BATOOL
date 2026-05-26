@@ -440,8 +440,8 @@
     </div>
     <div class="sidebar-footer-bottom">
       <div class="system-status">
-        <span class="status-dot online"></span>
-        <span class="status-label">System Online</span>
+        <span class="status-dot online" id="sidebarStatusDot"></span>
+        <span class="status-label" id="sidebarStatusLabel">System Online</span>
       </div>
       <div class="sidebar-version">v2.4.1</div>
     </div>
@@ -899,6 +899,43 @@
                     <span>Light</span>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <!-- ══ MAINTENANCE MODE ═══════════════════════════════════════ -->
+            <div class="settings-group" id="maintenanceGroup" style="display:none">
+              <div class="settings-group-title" style="display:flex;align-items:center;gap:8px">
+                🔧 Maintenance Mode
+                <span id="maintenanceBadge" style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:rgba(239,68,68,.18);color:#f87171;letter-spacing:.5px;display:none">ACTIVE</span>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">เปิด/ปิดโหมดซ่อมบำรุง</div>
+                  <div class="setting-desc">เมื่อเปิด ผู้ใช้จะไม่สามารถใช้งาน BATOOL ได้ — Admin ยังคงใช้งานได้ตามปกติ</div>
+                </div>
+                <div class="setting-control">
+                  <label class="toggle-switch maintenance-toggle-switch">
+                    <input type="checkbox" id="maintenanceToggle" onchange="onMaintenanceToggle(this)" />
+                    <span class="toggle-track"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="setting-row" id="maintenanceReasonRow" style="display:none;margin-top:4px">
+                <div class="setting-info">
+                  <div class="setting-label">ข้อความแจ้งผู้ใช้ <span style="color:var(--text3);font-weight:400">(ไม่บังคับ)</span></div>
+                  <div class="setting-desc">ข้อความที่แสดงในหน้า Maintenance ของผู้ใช้</div>
+                </div>
+                <div class="setting-control" style="flex:1;max-width:380px">
+                  <div style="display:flex;gap:8px;align-items:center">
+                    <input type="text" class="form-input" id="maintenanceReason"
+                      placeholder="เช่น กำลังอัปเดตระบบ คาดว่าเสร็จภายใน 30 นาที"
+                      style="flex:1;font-size:13px" maxlength="200" />
+                    <button class="btn btn-ghost btn-sm" onclick="saveMaintenanceReason()">บันทึก</button>
+                  </div>
+                </div>
+              </div>
+              <div style="margin-top:12px;padding:12px 16px;border-radius:8px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);font-size:12px;color:var(--warn);line-height:1.6">
+                ⚠️ ผู้ใช้จะเห็นหน้า "ระบบกำลังปรับปรุง" ทันที และไม่สามารถใช้งาน BATOOL ได้จนกว่าจะปิด Maintenance Mode
               </div>
             </div>
           </div>
@@ -1694,5 +1731,11 @@ document.head.appendChild(_s);
   </div>
 </div>
 
+
+<!-- ══ MAINTENANCE MODE OVERLAY (ฝั่ง admin เห็นแค่ banner เล็ก ไม่ block) ══ -->
+<div id="maintenanceBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#b45309,#92400e);color:#fef3c7;padding:10px 20px;font-size:13px;font-weight:600;text-align:center;letter-spacing:.3px;box-shadow:0 2px 12px rgba(0,0,0,.4)">
+  🔧 Maintenance Mode กำลังใช้งานอยู่ — ผู้ใช้ไม่สามารถเข้าถึง BATOOL ได้ในขณะนี้
+  &nbsp;&nbsp;<button onclick="onMaintenanceToggle({checked:false},true)" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fef3c7;padding:3px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">ปิด Maintenance</button>
+</div>
 </body>
 </html>

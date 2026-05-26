@@ -16,6 +16,10 @@ services:
         value: "60"
       - key: ENVIRONMENT
         value: production
+      - key: ADMIN_USERNAME      # เพิ่ม
+        value: "admin"      # เพิ่ม
+      - key: ADMIN_PASSWORD      # เพิ่ม — ห้ามใส่ใน yaml จริง ให้ set ใน Render Dashboard
+        sync: false
 
 databases:
   - name: ba-tool-db

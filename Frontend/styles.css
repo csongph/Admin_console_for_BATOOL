@@ -1894,3 +1894,25 @@ code { font-family: var(--mono); }
   border-color: #ef4444;
   color: #ef4444;
 }
+
+/* ── Maintenance Mode Toggle ───────────────────────────────────────────────── */
+.maintenance-toggle-switch .toggle-track { background: var(--border); }
+.maintenance-toggle-switch input:checked + .toggle-track {
+  background: rgba(239,68,68,.35);
+}
+.maintenance-toggle-switch input:checked + .toggle-track::after {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239,68,68,.6);
+  left: 19px;
+}
+
+/* sidebar status dot — maintenance state */
+.status-dot.maintenance {
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+  animation: pulse-warn 1.5s infinite;
+}
+@keyframes pulse-warn {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .4; }
+}
