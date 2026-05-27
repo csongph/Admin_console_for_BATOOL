@@ -14,6 +14,7 @@ Endpoints:
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from typing import Dict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,6 +54,10 @@ class MaintenanceRequest(BaseModel):
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
+class SettingsRequest(BaseModel):
+    settings: Dict[str, str]
+
+
 @router.get("/status", response_model=APIResponse)
 async def get_status(
     current_user: dict         = Depends(get_current_user),
@@ -81,6 +86,26 @@ async def stop_system(
 
 
 # ── Maintenance ────────────────────────────────────────────────────────────────
+
+@router.get("/settings", response_model=APIResponse)
+async def get_settings(
+    current_user: dict         = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    data = await system_service.get_settings(db)
+    return APIResponse(success=True, message="Settings retrieved", data=data)
+
+
+@router.put("/settings", response_model=APIResponse)
+async def update_settings(
+    body:         SettingsRequest,
+    db:           AsyncSession = Depends(get_db),
+    current_user: dict         = Depends(require_admin),
+):
+    data = await system_service.set_settings(db, body.settings)
+    logger.info("System settings updated by admin %s", current_user["username"])
+    return APIResponse(success=True, message="Settings updated", data=data)
+
 
 @router.get("/maintenance", response_model=APIResponse)
 async def get_maintenance(db: AsyncSession = Depends(get_db)):

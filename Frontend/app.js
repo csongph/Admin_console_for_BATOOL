@@ -156,6 +156,11 @@ function navigate(page) {
     const labels = { dashboard:'Dashboard', mapping:'Mapping Manager', databases:'Database Registry', sessions:'Session Monitor', logs:'Log Viewer', settings:'Settings', activity:'Update Activity' };
     bcPage.textContent = labels[page] || page;
   }
+  if (page === 'settings') {
+    _loadSettingsValues();
+    loadSystemSettings();
+    fetchMyRole().then(() => loadMaintenanceState());
+  }
   if (isMobile()) closeMobileSidebar();
 }
 
@@ -410,6 +415,51 @@ function goMappingPage(p) {
 }
 
 function filterMappings() { mappingCurrentPage = 1; selectedMappings.clear(); renderMappingTable(); }
+
+function selectFilterOption(selectEl, candidates) {
+  if (!selectEl) return false;
+  const clean = value => String(value || '').trim().toLowerCase();
+  const normalized = candidates.map(clean).filter(Boolean);
+  const options = Array.from(selectEl.options);
+  const match = options.find(opt => normalized.includes(clean(opt.value)) || normalized.includes(clean(opt.textContent)));
+  if (!match) return false;
+  selectEl.value = match.value;
+  return true;
+}
+
+function escapeAttr(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+async function viewDatabaseRules(dbKey, dbName) {
+  if (!mappingData.length) await fetchMappings();
+
+  navigate('mapping');
+
+  const searchInput = document.getElementById('mappingSearch');
+  const srcSel      = document.getElementById('filterSrcDb');
+  const destSel     = document.getElementById('filterDestDb');
+  const statusSel   = document.getElementById('filterStatus');
+  const candidates  = [dbKey, dbName];
+
+  if (searchInput) searchInput.value = '';
+  if (destSel) destSel.value = '';
+  if (statusSel) statusSel.value = '';
+
+  const found = selectFilterOption(srcSel, candidates);
+  if (!found && srcSel) srcSel.value = '';
+
+  filterMappings();
+  document.querySelector('.page-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+
+  const count = getFilteredMappings().length;
+  showToast(found ? `Showing ${count} rule(s) for ${dbName}` : `No source rules found for ${dbName}`, found ? 'info' : 'warn');
+}
 
 function toggleSelect(id, checked)  { checked ? selectedMappings.add(id) : selectedMappings.delete(id); updateBulkBar(); }
 function toggleAll(checkbox) {
@@ -1136,7 +1186,7 @@ function renderDatabases() {
         <div class="db-stat"><div class="db-stat-label">Active Sessions</div><div class="db-stat-val">${db.sessions}</div></div>
       </div>
       <div class="db-card-actions">
-        <button class="btn btn-sm btn-ghost" onclick="showToast('Viewing rules for ${db.name}','info')">View Rules</button>
+        <button class="btn btn-sm btn-ghost" data-db-key="${escapeAttr(db.key)}" data-db-name="${escapeAttr(db.name)}" onclick="viewDatabaseRules(this.dataset.dbKey, this.dataset.dbName)">View Rules</button>
         <button class="btn btn-sm btn-ghost" onclick="editDatabase(${db.id})">Edit</button>
         <button class="btn btn-sm btn-danger" onclick="confirmDeleteDatabase(${db.id})">Delete</button>
       </div>
@@ -1520,7 +1570,7 @@ function switchSettings(section, btn) {
   const target = document.getElementById('settings-' + section);
   if (target) target.classList.remove('hidden');
   if (section === 'users')                               { fetchMyRole().then(() => fetchUsers()); }
-  if (section === 'security' || section === 'ratelimit') { _loadSettingsValues(); }
+  if (section === 'security' || section === 'ratelimit') { _loadSettingsValues(); loadSystemSettings(); }
   if (section === 'general')                             { fetchMyRole().then(() => loadMaintenanceState()); }
 }
 
@@ -1634,13 +1684,84 @@ async function saveMaintenanceReason() {
 
 // ── Security Settings ─────────────────────────────────────────────────────────
 
-function saveSecuritySettings() {
-  const timeout    = parseInt(document.getElementById('secSessionTimeout')?.value) || 60;
-  const minPw      = parseInt(document.getElementById('secMinPwLen')?.value) || 6;
-  const maxAttempt = parseInt(document.getElementById('secMaxAttempts')?.value) || 5;
-  localStorage.setItem('sec_session_timeout', timeout);
-  localStorage.setItem('sec_min_pw_len',      minPw);
-  localStorage.setItem('sec_max_attempts',    maxAttempt);
+function clampNumberInput(id, fallback) {
+  const el = document.getElementById(id);
+  if (!el) return fallback;
+  const min = Number(el.min || -Infinity);
+  const max = Number(el.max || Infinity);
+  let value = parseInt(el.value, 10);
+  if (Number.isNaN(value)) value = fallback;
+  value = Math.min(max, Math.max(min, value));
+  el.value = value;
+  return value;
+}
+
+function getSettingsFormValues() {
+  return {
+    sec_session_timeout: String(clampNumberInput('secSessionTimeout', 60)),
+    sec_min_pw_len: String(clampNumberInput('secMinPwLen', 6)),
+    sec_max_attempts: String(clampNumberInput('secMaxAttempts', 5)),
+    rl_max_req_min: String(clampNumberInput('rlMaxReqMin', 300)),
+    rl_bulk_limit: String(clampNumberInput('rlBulkLimit', 5000)),
+    rl_sync_interval: String(clampNumberInput('rlSyncInterval', 300)),
+    rl_max_retry: String(clampNumberInput('rlMaxRetry', 3)),
+  };
+}
+
+function saveSettingsLocally(values) {
+  Object.entries(values).forEach(([key, value]) => localStorage.setItem(key, value));
+}
+
+function applySystemSettings(values = {}) {
+  const map = {
+    secSessionTimeout: 'sec_session_timeout',
+    secMinPwLen: 'sec_min_pw_len',
+    secMaxAttempts: 'sec_max_attempts',
+    rlMaxReqMin: 'rl_max_req_min',
+    rlBulkLimit: 'rl_bulk_limit',
+    rlSyncInterval: 'rl_sync_interval',
+    rlMaxRetry: 'rl_max_retry',
+  };
+  Object.entries(map).forEach(([id, key]) => {
+    const el = document.getElementById(id);
+    if (el && values[key] !== undefined && values[key] !== null) el.value = values[key];
+  });
+}
+
+async function loadSystemSettings() {
+  try {
+    const res = await apiCall('/api/system/settings');
+    const values = res.data || {};
+    saveSettingsLocally(values);
+    applySystemSettings(values);
+  } catch (_) {
+    _loadSettingsValues();
+  }
+}
+
+async function saveSystemSettings(keys, label) {
+  const values = getSettingsFormValues();
+  const payload = Object.fromEntries(keys.map(key => [key, values[key]]));
+  saveSettingsLocally(payload);
+  try {
+    const res = await apiCall('/api/system/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ settings: payload }),
+    });
+    saveSettingsLocally(res.data || payload);
+    applySystemSettings(res.data || payload);
+    showToast(`${label} settings saved`, 'success');
+  } catch (e) {
+    showToast(`${label} saved on this browser only: ${e.message}`, 'warn');
+  }
+}
+
+async function saveSecuritySettings() {
+  await saveSystemSettings(
+    ['sec_session_timeout', 'sec_min_pw_len', 'sec_max_attempts'],
+    'Security'
+  );
+  return;
   showToast('บันทึกการตั้งค่า Security แล้ว', 'success');
 }
 
@@ -1677,15 +1798,12 @@ async function revokeAllSessions() {
 
 // ── Rate Limit Settings ───────────────────────────────────────────────────────
 
-function saveRateLimitSettings() {
-  const maxReq   = parseInt(document.getElementById('rlMaxReqMin')?.value) || 300;
-  const bulk     = parseInt(document.getElementById('rlBulkLimit')?.value) || 5000;
-  const interval = parseInt(document.getElementById('rlSyncInterval')?.value) || 300;
-  const retry    = parseInt(document.getElementById('rlMaxRetry')?.value) || 3;
-  localStorage.setItem('rl_max_req_min',    maxReq);
-  localStorage.setItem('rl_bulk_limit',     bulk);
-  localStorage.setItem('rl_sync_interval',  interval);
-  localStorage.setItem('rl_max_retry',      retry);
+async function saveRateLimitSettings() {
+  await saveSystemSettings(
+    ['rl_max_req_min', 'rl_bulk_limit', 'rl_sync_interval', 'rl_max_retry'],
+    'Rate limiting'
+  );
+  return;
   showToast('บันทึกการตั้งค่า Rate Limiting แล้ว', 'success');
 }
 
@@ -1766,6 +1884,7 @@ function init() {
     refreshDashboard();
     connectPresence();
     fetchActivities();
+    loadSystemSettings();
   });
 }
 

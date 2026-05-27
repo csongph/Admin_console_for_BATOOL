@@ -1016,6 +1016,19 @@
               </div>
             </div>
             <div class="settings-group">
+              <div class="settings-group-title">Templates</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">Download import templates</div>
+                  <div class="setting-desc">Use these files as starting points for bulk import.</div>
+                </div>
+                <div class="setting-control">
+                  <button class="btn btn-ghost btn-sm" onclick="downloadImportTemplate('xlsx')">Download xlsx</button>
+                  <button class="btn btn-ghost btn-sm" onclick="downloadImportTemplate('json')">Download JSON</button>
+                </div>
+              </div>
+            </div>
+            <div class="settings-group">
               <div class="settings-group-title">xlsx Format</div>
               <pre style="background:var(--bg3);border-radius:8px;padding:14px 16px;font-size:12px;font-family:var(--mono);color:var(--text2);overflow-x:auto;white-space:pre">src_db,raw_type,dest_db,final_type,status
 MySQL,VARCHAR,PostgreSQL,TEXT,approved
