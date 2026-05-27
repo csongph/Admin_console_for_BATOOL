@@ -15,23 +15,18 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
 
     ALLOWED_ORIGINS: List[str] = [
-    "http://localhost",
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://localhost:5500",
-    "http://localhost:5501",
-    "http://127.0.0.1",
-    "http://127.0.0.1:5500",
-    "http://127.0.0.1:5501",
-    "null",
-    "https://ba-tool-for-multiple-db.vercel.app",
-]
-
-@property
-def allowed_origins_with_render(self) -> List[str]:
-    origins = list(self.ALLOWED_ORIGINS)
-    origins.append("https://admin-console-for-batool.onrender.com")
-    return origins
+        "http://localhost",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:5500",
+        "http://localhost:5501",
+        "http://127.0.0.1",
+        "http://127.0.0.1:5500",
+        "http://127.0.0.1:5501",
+        "null",
+        "https://ba-tool-for-multiple-db.vercel.app",
+        "https://admin-console-for-batool-91pz.vercel.app",
+    ]
 
     class Config:
         env_file = ".env"
