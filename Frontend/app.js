@@ -6,10 +6,12 @@
 
 function getDefaultApiUrl() {
   const host = window.location.hostname;
+
   if (host === '127.0.0.1' || host === 'localhost') {
     return `${window.location.protocol}//${host}:8000`;
   }
-  return 'http://localhost:8000';
+
+  return 'https://admin-console-for-batool.onrender.com';
 }
 
 const DEFAULT_API_URL = getDefaultApiUrl();
