@@ -1,3 +1,6 @@
+bash
+
+cat > /home/claude/app.js << 'ENDOFFILE'
 /* ============================================================
    BA Tool — Admin Console  |  app.js
    ============================================================ */
@@ -316,14 +319,11 @@ let mappingCurrentPage = 1;
 const MAPPING_PAGE_SIZE = 8;
 let selectedMappings = new Set();
 
-// ── normMapping: map API response → internal object ──────────────────────────
-// DB columns: src_db, source_type, raw_type, logical_type, master_type,
-//             dest_db, final_type, confidence, status, updated
 function normMapping(m) {
   return {
     id:          m.id,
     srcDb:       m.src_db,
-    sourceType:  m.source_type   || '',   // Avro base type e.g. int, long, string
+    sourceType:  m.source_type   || '',
     rawType:     m.raw_type,
     logicalType: m.logical_type,
     masterType:  m.master_type,
@@ -437,13 +437,12 @@ function updateBulkBar() {
 }
 
 // ════════════════════════════════════════════════════════════
-//  SEARCHABLE SELECT  (custom dropdown — no blur/change race)
+//  SEARCHABLE SELECT
 // ════════════════════════════════════════════════════════════
 
 let _ssOptions = {};
-let _ssActive  = null; // id of currently open dropdown
+let _ssActive  = null;
 
-/* Close all open dropdowns */
 function _ssCloseAll(exceptId) {
   document.querySelectorAll('.ss-list').forEach(el => {
     if (el.dataset.ssId !== exceptId) {
@@ -453,7 +452,6 @@ function _ssCloseAll(exceptId) {
   if (_ssActive && _ssActive !== exceptId) _ssActive = null;
 }
 
-/* Close on outside click */
 document.addEventListener('mousedown', (e) => {
   if (!e.target.closest('.searchable-select-wrap')) {
     _ssCloseAll(null);
@@ -461,7 +459,6 @@ document.addEventListener('mousedown', (e) => {
   }
 });
 
-/* Build / rebuild the custom list element for a given id */
 function _ssBuildList(id) {
   const wrap = document.querySelector(`.searchable-select-wrap[data-ss="${id}"]`);
   if (!wrap) return null;
@@ -485,10 +482,9 @@ function _ssRenderList(id, opts) {
   list.innerHTML = opts.map(o =>
     `<li class="ss-item" data-value="${o.value}">${o.label}</li>`
   ).join('');
-  // attach mousedown (not click) so it fires before input blur
   list.querySelectorAll('.ss-item').forEach(li => {
     li.addEventListener('mousedown', (e) => {
-      e.preventDefault(); // prevent input from losing focus first
+      e.preventDefault();
       _ssPick(id, li.dataset.value);
     });
   });
@@ -506,11 +502,8 @@ function _ssPick(id, value) {
   clearFieldError(id);
 }
 
-/* Public API */
-
 function _ssSetup(id, options) {
   _ssOptions[id] = options;
-  // Also populate the legacy hidden <select> (kept for any downstream code)
   const sel = document.getElementById(id);
   if (sel) {
     sel.innerHTML = options.map(o =>
@@ -527,14 +520,12 @@ function filterSearchableSelect(id, query) {
   );
   _ssRenderList(id, opts);
 
-  // Show list when user starts typing
   const list = _ssBuildList(id);
   if (list) {
     list.classList.remove('hidden');
     _ssActive = id;
   }
 
-  // If query cleared, also clear the hidden value
   if (!query) {
     const hidden = document.getElementById(id + 'Val');
     if (hidden) hidden.value = '';
@@ -556,13 +547,11 @@ function openSearchableSelect(id) {
   }
 }
 
-// pickSearchableSelect kept for backward compatibility (called by old onchange)
 function pickSearchableSelect(id) {
   const sel = document.getElementById(id);
   if (sel && sel.value) _ssPick(id, sel.value);
 }
 
-// commitSearchableSelect — try to match typed text on blur
 function commitSearchableSelect(id) {
   setTimeout(() => {
     const list   = _ssBuildList(id);
@@ -570,7 +559,7 @@ function commitSearchableSelect(id) {
     const input  = document.getElementById(id + 'Search');
     const hidden = document.getElementById(id + 'Val');
     if (!input || !hidden) return;
-    if (hidden.value) return; // already picked
+    if (hidden.value) return;
     const q = input.value.trim().toLowerCase();
     if (q) {
       const match = (_ssOptions[id] || []).find(o =>
@@ -637,8 +626,6 @@ async function loadMappingFormOptions(force = false) {
   }
 }
 
-// ── Validation helpers ────────────────────────────────────────────────────────
-
 function setFieldError(id, msg) {
   const input = document.getElementById(id) || document.getElementById(id + 'Search');
   const errEl = document.getElementById(id + 'Err');
@@ -661,7 +648,6 @@ function validateMappingField(id) {
   return !!val;
 }
 
-// ── _validateMappingForm: ตรวจครบทุก field รวม source_type ──────────────────
 function _validateMappingForm() {
   let ok = true;
   const srcDb  = getSearchableSelectValue('mSrcDb');
@@ -675,7 +661,6 @@ function _validateMappingForm() {
   if (!master) { setFieldError('mMasterType', 'Master Type is required');     ok = false; }
   else           clearFieldError('mMasterType');
 
-  // text fields — เรียงตาม DB schema
   ['mSourceType', 'mRawType', 'mLogicalType', 'mFinalType'].forEach(id => {
     if (!validateMappingField(id)) ok = false;
   });
@@ -683,17 +668,14 @@ function _validateMappingForm() {
   return ok;
 }
 
-// ── editMapping: โหลดค่าทุก field รวม sourceType + confidence ───────────────
 function editMapping(id) {
   const m = mappingData.find(r => r.id === id);
   if (!m) return;
   loadMappingFormOptions().then(() => {
-    // searchable selects
     setSearchableSelectValue('mSrcDb',      m.srcDb);
     setSearchableSelectValue('mDestDb',     m.destDb);
     setSearchableSelectValue('mMasterType', m.masterType);
 
-    // text inputs — เรียงตาม DB schema
     const sourceTypeEl = document.getElementById('mSourceType');
     const rawTypeEl    = document.getElementById('mRawType');
     const logicalEl    = document.getElementById('mLogicalType');
@@ -708,7 +690,6 @@ function editMapping(id) {
     if (confidenceEl) confidenceEl.value = m.confidence;
     if (statusEl)     statusEl.value     = m.status;
 
-    // clear errors
     ['mSrcDb', 'mDestDb', 'mMasterType', 'mSourceType', 'mRawType', 'mLogicalType', 'mFinalType']
       .forEach(clearFieldError);
   });
@@ -747,30 +728,25 @@ function bulkApprove() {
     .catch(e => showToast('Approve failed: ' + e.message, 'error'));
 }
 
-// ── openAddMapping: reset ทุก field รวม sourceType + confidence ──────────────
 function openAddMapping() {
   document.getElementById('mappingModalTitle').textContent = 'Add Mapping Rule';
 
-  // reset searchable selects
   ['mSrcDb', 'mDestDb', 'mMasterType'].forEach(id => {
     const inp  = document.getElementById(id + 'Search');
     const hid  = document.getElementById(id + 'Val');
     if (inp) inp.value = '';
     if (hid) hid.value = '';
     clearFieldError(id);
-    // close dropdown list if open
     const wrap = document.querySelector(`.searchable-select-wrap[data-ss="${id}"]`);
     if (wrap) { const list = wrap.querySelector('.ss-list'); if (list) list.classList.add('hidden'); }
   });
 
-  // reset text inputs — เรียงตาม DB schema
   ['mSourceType', 'mRawType', 'mLogicalType', 'mFinalType'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.value = ''; el.classList.remove('input-error', 'input-ok'); }
     clearFieldError(id);
   });
 
-  // reset confidence + status
   const confEl   = document.getElementById('mConfidence');
   const statusEl = document.getElementById('mStatus');
   if (confEl)   confEl.value   = 100;
@@ -781,7 +757,6 @@ function openAddMapping() {
   openModal('mappingModal');
 }
 
-// ── saveMapping: ส่ง payload ครบทุก field รวม source_type + confidence ───────
 async function saveMapping() {
   if (!_validateMappingForm()) {
     showToast('Please fix the errors before saving', 'error');
@@ -828,7 +803,7 @@ async function saveMapping() {
 
 const IMPORT_REQUIRED_COLS = ['src_db', 'raw_type', 'dest_db'];
 const IMPORT_ALL_COLS      = ['src_db','raw_type','source_type','logical_type','master_type','dest_db','final_type','confidence','status'];
-let   _importRows          = [];   // parsed & validated rows
+let   _importRows          = [];
 let   _importHasErrors     = false;
 
 function openBulkImport() {
@@ -840,24 +815,20 @@ function importReset() {
   _importRows      = [];
   _importHasErrors = false;
 
-  // reset steps
   document.getElementById('importStep1').classList.remove('hidden');
   document.getElementById('importStep2').classList.add('hidden');
   document.getElementById('importStep3').classList.add('hidden');
   document.getElementById('importRunBtn').classList.add('hidden');
 
-  // reset file input
   const fi = document.getElementById('importFileInput');
   if (fi) fi.value = '';
 
-  // reset preview
   document.getElementById('importPreviewHead').innerHTML = '';
   document.getElementById('importPreviewBody').innerHTML = '';
   document.getElementById('importPreviewMeta').textContent = '';
   document.getElementById('importValidationErrors').classList.add('hidden');
   document.getElementById('importValidationErrors').innerHTML = '';
 
-  // reset progress
   document.getElementById('importProgressBar').style.width = '0%';
   document.getElementById('importProgressCount').textContent = '0 / 0';
   document.getElementById('importProgressLabel').textContent = 'Importing…';
@@ -887,50 +858,50 @@ function importFileSelected(input) {
 
 function _importHandleFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
-  if (!['xlsx','json'].includes(ext)) {
+  if (!['xlsx', 'json'].includes(ext)) {
     showToast('Only xlsx and JSON files are supported', 'error');
     return;
   }
+
   const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const rows = ext === 'xlsx'
-        ? _parsexlsx(e.target.result)
-        : _parseJSON(e.target.result);
-      _importShowPreview(rows, file.name);
-    } catch (err) {
-      showToast('Failed to parse file: ' + err.message, 'error');
-    }
-  };
-  reader.readAsText(file, 'utf-8');
-}
 
-function _parsexlsx(text) {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
-  if (lines.length < 2) throw new Error('xlsx must have a header row and at least one data row');
-
-  // Parse header (handle quoted headers)
-  const headers = _xlsxSplitLine(lines[0]).map(h => h.trim().toLowerCase().replace(/^"|"$/g,''));
-
-  return lines.slice(1).map((line, i) => {
-    const vals = _xlsxSplitLine(line);
-    const row  = {};
-    headers.forEach((h, j) => { row[h] = (vals[j] || '').trim().replace(/^"|"$/g,''); });
-    return row;
-  });
-}
-
-function _xlsxSplitLine(line) {
-  const result = [];
-  let cur = '', inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') { inQ = !inQ; }
-    else if (ch === ',' && !inQ) { result.push(cur); cur = ''; }
-    else { cur += ch; }
+  if (ext === 'xlsx') {
+    // ✅ อ่านเป็น ArrayBuffer สำหรับ xlsx จริง
+    reader.onload = (e) => {
+      try {
+        if (typeof XLSX === 'undefined') {
+          showToast('SheetJS library not loaded — please refresh the page', 'error');
+          return;
+        }
+        const wb   = XLSX.read(e.target.result, { type: 'array' });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        // normalize keys เป็น lowercase + trim
+        const normalized = rows.map(r => {
+          const out = {};
+          Object.keys(r).forEach(k => {
+            out[k.trim().toLowerCase()] = String(r[k] ?? '');
+          });
+          return out;
+        });
+        _importShowPreview(normalized, file.name);
+      } catch (err) {
+        showToast('Failed to parse xlsx: ' + err.message, 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    // JSON — อ่านเป็น text เหมือนเดิม
+    reader.onload = (e) => {
+      try {
+        const rows = _parseJSON(e.target.result);
+        _importShowPreview(rows, file.name);
+      } catch (err) {
+        showToast('Failed to parse file: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
   }
-  result.push(cur);
-  return result;
 }
 
 function _parseJSON(text) {
@@ -954,13 +925,12 @@ function _importShowPreview(rows, filename) {
 
   rows.forEach((row, i) => {
     IMPORT_REQUIRED_COLS.forEach(col => {
-      if (!row[col] || !row[col].trim()) {
+      if (!row[col] || !String(row[col]).trim()) {
         errors.push(`Row ${i + 1}: missing required field "${col}"`);
         errorRows.add(i);
         _importHasErrors = true;
       }
     });
-    // validate confidence if present
     const conf = row.confidence;
     if (conf !== undefined && conf !== '') {
       const n = Number(conf);
@@ -972,16 +942,13 @@ function _importShowPreview(rows, filename) {
     }
   });
 
-  // Show step 2
   document.getElementById('importStep1').classList.add('hidden');
   document.getElementById('importStep2').classList.remove('hidden');
 
-  // Meta
   const metaEl = document.getElementById('importPreviewMeta');
   metaEl.innerHTML = `<strong>${filename}</strong> — ${rows.length} row(s)` +
     (_importHasErrors ? ` <span style="color:#ef4444">⚠ ${errors.length} error(s)</span>` : ' <span style="color:#22c55e">✓ Valid</span>');
 
-  // Build preview table (max 50 rows shown)
   const cols    = IMPORT_ALL_COLS.filter(c => rows.some(r => r[c]));
   const headEl  = document.getElementById('importPreviewHead');
   const bodyEl  = document.getElementById('importPreviewBody');
@@ -999,7 +966,6 @@ function _importShowPreview(rows, filename) {
     bodyEl.innerHTML += `<tr><td colspan="${cols.length}" style="color:var(--text3);text-align:center;padding:8px">… and ${rows.length - 50} more rows</td></tr>`;
   }
 
-  // Show errors
   const errEl = document.getElementById('importValidationErrors');
   if (errors.length > 0) {
     errEl.classList.remove('hidden');
@@ -1009,7 +975,6 @@ function _importShowPreview(rows, filename) {
     errEl.classList.add('hidden');
   }
 
-  // Show/hide import button
   const runBtn = document.getElementById('importRunBtn');
   if (_importHasErrors) {
     runBtn.classList.add('hidden');
@@ -1028,7 +993,6 @@ async function runBulkImport() {
   const runBtn = document.getElementById('importRunBtn');
   runBtn.disabled = true;
 
-  // Show step 3
   document.getElementById('importStep2').classList.add('hidden');
   document.getElementById('importStep3').classList.remove('hidden');
 
@@ -1083,11 +1047,9 @@ async function runBulkImport() {
       }
     }
 
-    // Auto-scroll log
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  // Done
   barEl.style.width  = '100%';
   labelEl.textContent = `Done! ${ok} imported, ${skipped} skipped, ${failed} failed`;
   labelEl.style.color = failed > 0 ? 'var(--danger,#ef4444)' : ok > 0 ? '#22c55e' : 'var(--text2)';
@@ -1109,27 +1071,41 @@ function downloadImportTemplate(type) {
     { src_db:'mysql',    raw_type:'int',     source_type:'int',    logical_type:'integer',master_type:'INTEGER',dest_db:'kafka', final_type:'int',    confidence:100, status:'active' },
   ];
 
-  let content, filename, mime;
-
   if (type === 'xlsx') {
-    const header = IMPORT_ALL_COLS.join(',');
-    const rows   = sample.map(r => IMPORT_ALL_COLS.map(c => r[c]).join(','));
-    content  = [header, ...rows].join('\n');
-    filename = 'mapping_import_template.xlsx';
-    mime     = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-  } else {
-    content  = JSON.stringify(sample, null, 2);
-    filename = 'mapping_import_template.json';
-    mime     = 'application/json';
+    // ✅ สร้าง xlsx จริงด้วย SheetJS
+    if (typeof XLSX === 'undefined') {
+      showToast('SheetJS library not loaded — please refresh the page', 'error');
+      return;
+    }
+
+    // สร้าง rows ตาม column order ที่กำหนด
+    const sheetData = sample.map(r => {
+      const row = {};
+      IMPORT_ALL_COLS.forEach(c => { row[c] = r[c] ?? ''; });
+      return row;
+    });
+
+    const ws = XLSX.utils.json_to_sheet(sheetData, { header: IMPORT_ALL_COLS });
+
+    // กำหนด column width ให้อ่านง่าย
+    ws['!cols'] = IMPORT_ALL_COLS.map(c => ({ wch: Math.max(c.length + 4, 14) }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Mappings');
+    XLSX.writeFile(wb, 'mapping_import_template.xlsx');
+    return;
   }
 
-  const blob = new Blob([content], { type: mime });
-  const a    = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
-  a.download = filename;
+  // JSON template
+  const content  = JSON.stringify(sample, null, 2);
+  const blob     = new Blob([content], { type: 'application/json' });
+  const a        = document.createElement('a');
+  a.href         = URL.createObjectURL(blob);
+  a.download     = 'mapping_import_template.json';
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
 // ════════════════════════════════════════════════════════════
 //  DATABASE REGISTRY
 // ════════════════════════════════════════════════════════════
@@ -1576,7 +1552,6 @@ function rotateApiKey() {
 let _maintenanceActive = false;
 let _maintenancePollTimer = null;
 
-/** โหลดสถานะ maintenance จาก backend แล้วอัปเดต UI */
 async function loadMaintenanceState() {
   const isAdmin = _currentRole === 'admin';
   const group   = document.getElementById('maintenanceGroup');
@@ -1589,7 +1564,6 @@ async function loadMaintenanceState() {
     _maintenanceActive = active;
     _applyMaintenanceUI(active);
 
-    // โหลด reason ด้วย
     const rRes = await apiCall('/api/system/maintenance/reason');
     const reasonEl = document.getElementById('maintenanceReason');
     if (reasonEl && rRes.data?.reason) reasonEl.value = rRes.data.reason;
@@ -1598,25 +1572,19 @@ async function loadMaintenanceState() {
   }
 }
 
-/** อัปเดต UI ทั้งหมดตามสถานะ maintenance */
 function _applyMaintenanceUI(active) {
-  // Toggle checkbox
   const toggle = document.getElementById('maintenanceToggle');
   if (toggle) toggle.checked = active;
 
-  // Badge ใน heading
   const badge = document.getElementById('maintenanceBadge');
   if (badge) badge.style.display = active ? '' : 'none';
 
-  // Reason row — แสดงเฉพาะตอน active
   const reasonRow = document.getElementById('maintenanceReasonRow');
   if (reasonRow) reasonRow.style.display = active ? '' : 'none';
 
-  // Top banner — แจ้งเตือน admin ว่า maintenance เปิดอยู่
   const banner = document.getElementById('maintenanceBanner');
   if (banner) banner.style.display = active ? '' : 'none';
 
-  // Sidebar status dot
   const dot   = document.getElementById('sidebarStatusDot');
   const label = document.getElementById('sidebarStatusLabel');
   if (dot) {
@@ -1627,15 +1595,12 @@ function _applyMaintenanceUI(active) {
   }
 }
 
-/** เรียกเมื่อ admin toggle checkbox */
 async function onMaintenanceToggle(el, forceOff = false) {
   const enabled = forceOff ? false : el.checked;
 
-  // ถ้าจะเปิด ให้ยืนยันก่อน
   if (enabled && !confirm(
     '⚠️ ยืนยันเปิด Maintenance Mode?\n\nผู้ใช้ทุกคนจะไม่สามารถใช้งาน BATOOL ได้ทันที\n(Admin ยังคงใช้งานได้ตามปกติ)'
   )) {
-    // ยกเลิก — คืน toggle กลับ
     const toggle = document.getElementById('maintenanceToggle');
     if (toggle) toggle.checked = false;
     return;
@@ -1654,18 +1619,15 @@ async function onMaintenanceToggle(el, forceOff = false) {
       enabled ? 'warn' : 'success'
     );
 
-    // sync toggle ที่อาจเป็น forceOff
     const toggle = document.getElementById('maintenanceToggle');
     if (toggle) toggle.checked = enabled;
   } catch (e) {
     showToast('เปลี่ยนสถานะ maintenance ล้มเหลว: ' + e.message, 'error');
-    // คืน checkbox กลับ
     const toggle = document.getElementById('maintenanceToggle');
     if (toggle) toggle.checked = _maintenanceActive;
   }
 }
 
-/** บันทึก reason โดยไม่เปลี่ยนสถานะ */
 async function saveMaintenanceReason() {
   const reason = document.getElementById('maintenanceReason')?.value.trim() || '';
   try {
@@ -1707,10 +1669,9 @@ async function revokeAllSessions() {
   try {
     const sessions = await apiCall('/api/sessions');
     const list     = sessions.data?.sessions || [];
-    const myToken  = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
     let revoked = 0;
     for (const s of list) {
-      if (s.id && !s.id.startsWith('auth-')) continue; // skip non-auth sessions
+      if (s.id && !s.id.startsWith('auth-')) continue;
       try {
         await apiCall(`/api/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' });
         revoked++;
@@ -1753,7 +1714,6 @@ function _loadSettingsValues() {
   if (ri) ri.value = localStorage.getItem('rl_sync_interval') || 300;
   if (rm) rm.value = localStorage.getItem('rl_max_retry') || 3;
 }
-
 
 // ════════════════════════════════════════════════════════════
 //  GLOBAL SEARCH
@@ -1807,7 +1767,6 @@ async function triggerSync() {
 // ════════════════════════════════════════════════════════════
 
 function init() {
-  // fetch role จริงก่อนเสมอ เพื่อให้ทุก permission check ถูกต้อง
   fetchMyRole().then(() => {
     fetchMappings();
     fetchDatabases();
@@ -1818,6 +1777,7 @@ function init() {
     fetchActivities();
   });
 }
+
 // ════════════════════════════════════════════════════════════
 //  UPDATE ACTIVITY
 // ════════════════════════════════════════════════════════════
@@ -1826,7 +1786,6 @@ let activityData   = [];
 let activityPage   = 1;
 const ACTIVITY_PAGE_SIZE = 15;
 
-// ── action badge color ────────────────────────────────────────
 function actionBadgeClass(action) {
   return { create: 'success', update: 'warning', delete: 'error', bulk_import: 'info' }[action] || 'draft';
 }
@@ -1910,7 +1869,6 @@ function renderActivityTable() {
       </tr>`).join('');
   }
 
-  // pagination
   const pag = document.getElementById('activityPagination');
   if (pag) {
     let html = `<button class="page-btn" onclick="goActivityPage(${activityPage-1})" ${activityPage===1?'disabled':''}>‹</button>`;
@@ -1946,7 +1904,6 @@ async function openActivityDetail(id) {
     let detailHtml = '';
 
     if (detail && typeof detail === 'object') {
-      // before / after / changes
       const sections = [];
       if (detail.before) sections.push({ label: '📷 ก่อนแก้ไข (Before)', data: detail.before, color: '#f87171' });
       if (detail.after)  sections.push({ label: '✅ หลังแก้ไข (After)',  data: detail.after,  color: '#34d399' });
@@ -1977,7 +1934,6 @@ async function openActivityDetail(id) {
 
     body.innerHTML = `
       <div style="padding:20px 0 8px">
-        <!-- Meta info -->
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:0 24px 20px;border-bottom:1px solid var(--border);margin-bottom:20px">
           <div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px">ผู้ใช้งาน</div>
@@ -2000,7 +1956,6 @@ async function openActivityDetail(id) {
             <div style="font-size:13px;font-family:var(--mono)">${act.created_at ? new Date(act.created_at).toLocaleString('th-TH') : '—'}</div>
           </div>
         </div>
-        <!-- Detail -->
         ${detailHtml}
       </div>`;
   } catch (e) {
@@ -2017,12 +1972,11 @@ function closeActivityModal() {
 //  USER MANAGEMENT
 // ════════════════════════════════════════════════════════════
 
-let _usersData    = [];      // รายการ users ทั้งหมด
-let _currentRole  = 'viewer'; // role ของผู้ใช้ที่ login
-let _editingUserId = null;   // null = create mode, number = edit mode
+let _usersData    = [];
+let _currentRole  = 'viewer';
+let _editingUserId = null;
 let _resetPwUserId = null;
 
-// ── ดึง role ของตัวเองหลัง login ─────────────────────────────────────────────
 async function fetchMyRole() {
   try {
     const res = await apiCall('/api/auth/me');
@@ -2035,19 +1989,16 @@ async function fetchMyRole() {
 function _applyMappingRoleUI() {
   const canEdit  = _currentRole === 'admin' || _currentRole === 'editor';
   const isAdmin  = _currentRole === 'admin';
-  // Mapping page header buttons
   const btnBulk  = document.getElementById('btnBulkImport');
   const btnAdd   = document.getElementById('btnAddRule');
   if (btnBulk) btnBulk.style.display = canEdit ? '' : 'none';
   if (btnAdd)  btnAdd.style.display  = canEdit ? '' : 'none';
-  // Bulk action bar
   const bulkApproveBtn = document.querySelector('[onclick="bulkApprove()"]');
   const bulkDeleteBtn  = document.querySelector('[onclick="bulkDelete()"]');
   if (bulkApproveBtn) bulkApproveBtn.style.display = canEdit ? '' : 'none';
   if (bulkDeleteBtn)  bulkDeleteBtn.style.display  = isAdmin ? '' : 'none';
 }
 
-// ── โหลด users (ทุกคนดูได้ แต่แก้ไขได้เฉพาะ admin) ─────────────────────────
 async function fetchUsers() {
   try {
     const res  = await apiCall('/api/users');
@@ -2125,7 +2076,6 @@ function renderUsersTable() {
     </tr>`).join('');
 }
 
-// ── Open Create / Edit Modal ──────────────────────────────────────────────────
 function openUserModal(userId = null) {
   _editingUserId = userId;
   const overlay = document.getElementById('userModal');
@@ -2134,7 +2084,6 @@ function openUserModal(userId = null) {
   const actRow  = document.getElementById('uActiveRow');
   if (!overlay) return;
 
-  // reset fields
   document.getElementById('uUsername').value    = '';
   document.getElementById('uPassword').value    = '';
   document.getElementById('uDisplayName').value = '';
@@ -2143,7 +2092,6 @@ function openUserModal(userId = null) {
   ['uUsernameErr','uPasswordErr'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
 
   if (userId) {
-    // Edit mode
     const u = _usersData.find(x => x.id === userId);
     if (!u) return;
     title.textContent = `แก้ไขผู้ใช้: ${u.username}`;
@@ -2156,7 +2104,6 @@ function openUserModal(userId = null) {
     actRow?.classList.remove('hidden');
     document.getElementById('btnSaveUser').textContent = 'บันทึกการแก้ไข';
   } else {
-    // Create mode
     title.textContent = 'เพิ่มผู้ใช้ใหม่';
     document.getElementById('uUsername').disabled = false;
     pwRow?.classList.remove('hidden');
@@ -2181,7 +2128,6 @@ async function saveUser() {
   const role        = document.getElementById('uRole')?.value;
   const isActive    = document.getElementById('uIsActive')?.checked ?? true;
 
-  // Validate
   if (!_editingUserId) {
     const unErr = document.getElementById('uUsernameErr');
     if (!username || username.length < 3 || !/^[a-z0-9_\-.]+$/.test(username)) {
@@ -2224,7 +2170,6 @@ async function saveUser() {
   }
 }
 
-// ── Reset Password ────────────────────────────────────────────────────────────
 function openResetPwModal(userId, username) {
   _resetPwUserId = userId;
   const overlay = document.getElementById('resetPwModal');
@@ -2262,7 +2207,6 @@ async function confirmResetPw() {
   }
 }
 
-// ── Delete User ───────────────────────────────────────────────────────────────
 async function deleteUser(userId, username) {
   if (!confirm(`ยืนยันลบผู้ใช้ "${username}" ?\nการกระทำนี้ไม่สามารถยกเลิกได้`)) return;
   try {
@@ -2274,7 +2218,6 @@ async function deleteUser(userId, username) {
   }
 }
 
-// ── Toggle password visibility ────────────────────────────────────────────────
 function toggleFieldPw(inputId, iconEl) {
   const inp  = document.getElementById(inputId);
   if (!inp) return;
