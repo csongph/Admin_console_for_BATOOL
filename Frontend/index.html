@@ -1008,7 +1008,7 @@
               <div class="setting-row">
                 <div class="setting-info">
                   <div class="setting-label">รูปแบบที่รองรับ</div>
-                  <div class="setting-desc">CSV และ JSON — ดูตัวอย่าง format ด้านล่าง</div>
+                  <div class="setting-desc">xlsx และ JSON — ดูตัวอย่าง format ด้านล่าง</div>
                 </div>
                 <div class="setting-control">
                   <button class="btn btn-primary btn-sm" onclick="openBulkImport()">↑ Bulk Import</button>
@@ -1016,7 +1016,7 @@
               </div>
             </div>
             <div class="settings-group">
-              <div class="settings-group-title">CSV Format</div>
+              <div class="settings-group-title">xlsx Format</div>
               <pre style="background:var(--bg3);border-radius:8px;padding:14px 16px;font-size:12px;font-family:var(--mono);color:var(--text2);overflow-x:auto;white-space:pre">src_db,raw_type,dest_db,final_type,status
 MySQL,VARCHAR,PostgreSQL,TEXT,approved
 MySQL,INT,PostgreSQL,INTEGER,approved</pre>
@@ -1266,7 +1266,7 @@ MySQL,INT,PostgreSQL,INTEGER,approved</pre>
       <!-- Step 1: Upload Zone -->
       <div id="importStep1">
         <div class="import-format-hint">
-          <span class="import-format-badge">CSV</span>
+          <span class="import-format-badge">xlsx</span>
           <span class="import-format-badge">JSON</span>
           <span style="color:var(--text3);font-size:.85rem;">
             Columns: <code>src_db, raw_type, source_type, logical_type, master_type, dest_db, final_type, confidence, status</code>
@@ -1279,14 +1279,14 @@ MySQL,INT,PostgreSQL,INTEGER,approved</pre>
           ondrop="importDrop(event)"
           onclick="document.getElementById('importFileInput').click()">
           <div class="import-dropzone-icon">📂</div>
-          <div class="import-dropzone-text">Drop CSV or JSON file here</div>
+          <div class="import-dropzone-text">Drop xlsx or JSON file here</div>
           <div class="import-dropzone-sub">or click to browse</div>
-          <input type="file" id="importFileInput" accept=".csv,.json" class="hidden"
+          <input type="file" id="importFileInput" accept=".xlsx,.json" class="hidden"
             onchange="importFileSelected(this)" />
         </div>
 
         <div class="import-template-row">
-          <button class="btn btn-ghost btn-sm" onclick="downloadImportTemplate('csv')">⬇ Download CSV Template</button>
+          <button class="btn btn-ghost btn-sm" onclick="downloadImportTemplate('xlsx')">⬇ Download xlsx Template</button>
           <button class="btn btn-ghost btn-sm" onclick="downloadImportTemplate('json')">⬇ Download JSON Template</button>
         </div>
       </div>

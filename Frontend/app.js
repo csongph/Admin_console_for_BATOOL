@@ -823,7 +823,7 @@ async function saveMapping() {
 }
 
 // ════════════════════════════════════════════════════════════
-//  BULK IMPORT  (CSV / JSON → Mapping Rules)
+//  BULK IMPORT  (xlsx / JSON → Mapping Rules)
 // ════════════════════════════════════════════════════════════
 
 const IMPORT_REQUIRED_COLS = ['src_db', 'raw_type', 'dest_db'];
@@ -887,15 +887,15 @@ function importFileSelected(input) {
 
 function _importHandleFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
-  if (!['csv','json'].includes(ext)) {
-    showToast('Only CSV and JSON files are supported', 'error');
+  if (!['xlsx','json'].includes(ext)) {
+    showToast('Only xlsx and JSON files are supported', 'error');
     return;
   }
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      const rows = ext === 'csv'
-        ? _parseCSV(e.target.result)
+      const rows = ext === 'xlsx'
+        ? _parsexlsx(e.target.result)
         : _parseJSON(e.target.result);
       _importShowPreview(rows, file.name);
     } catch (err) {
@@ -905,22 +905,22 @@ function _importHandleFile(file) {
   reader.readAsText(file, 'utf-8');
 }
 
-function _parseCSV(text) {
+function _parsexlsx(text) {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
-  if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row');
+  if (lines.length < 2) throw new Error('xlsx must have a header row and at least one data row');
 
   // Parse header (handle quoted headers)
-  const headers = _csvSplitLine(lines[0]).map(h => h.trim().toLowerCase().replace(/^"|"$/g,''));
+  const headers = _xlsxSplitLine(lines[0]).map(h => h.trim().toLowerCase().replace(/^"|"$/g,''));
 
   return lines.slice(1).map((line, i) => {
-    const vals = _csvSplitLine(line);
+    const vals = _xlsxSplitLine(line);
     const row  = {};
     headers.forEach((h, j) => { row[h] = (vals[j] || '').trim().replace(/^"|"$/g,''); });
     return row;
   });
 }
 
-function _csvSplitLine(line) {
+function _xlsxSplitLine(line) {
   const result = [];
   let cur = '', inQ = false;
   for (let i = 0; i < line.length; i++) {
@@ -1111,12 +1111,12 @@ function downloadImportTemplate(type) {
 
   let content, filename, mime;
 
-  if (type === 'csv') {
+  if (type === 'xlsx') {
     const header = IMPORT_ALL_COLS.join(',');
     const rows   = sample.map(r => IMPORT_ALL_COLS.map(c => r[c]).join(','));
     content  = [header, ...rows].join('\n');
-    filename = 'mapping_import_template.csv';
-    mime     = 'text/csv';
+    filename = 'mapping_import_template.xlsx';
+    mime     = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   } else {
     content  = JSON.stringify(sample, null, 2);
     filename = 'mapping_import_template.json';
