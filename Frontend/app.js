@@ -1,12 +1,3 @@
-bash
-
-cat > /home/claude/app.js << 'ENDOFFILE'
-/* ============================================================
-   BA Tool — Admin Console  |  app.js
-   ============================================================ */
-
-'use strict';
-
 function getDefaultApiUrl() {
   const host = window.location.hostname;
 
