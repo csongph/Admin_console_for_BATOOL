@@ -251,8 +251,7 @@ async function refreshDashboard() {
     if (cards[0]) {
       const _scVal  = cards[0].querySelector('.sc-val');
       const _scPing = cards[0].querySelector('.sc-ping');
-      const _scDot  = cards[0].querySelector('.sc-dot');
-      if (_scVal)  { const t = document.createTextNode(healthOk ? 'Online ' : 'Error '); _scVal.innerHTML = ''; _scVal.appendChild(t); if (_scDot) { _scDot.className = `sc-dot ${healthOk ? 'online' : 'error'}`; _scVal.appendChild(_scDot); } }
+      if (_scVal)  _scVal.innerHTML  = (healthOk ? 'Online' : 'Error') + ` <span class="sc-dot ${healthOk ? 'online' : 'error'}"></span>`;
       if (_scPing) _scPing.textContent = `${ping} ms`;
     }
 
@@ -261,44 +260,76 @@ async function refreshDashboard() {
     if (statusDot)   statusDot.className    = `status-dot ${healthOk ? 'online' : 'offline'}`;
     if (statusLabel) statusLabel.textContent = healthOk ? 'System Online' : 'System Offline';
 
-    const metrics    = document.querySelectorAll('.metric-card');
-    const dbList     = dbsRes.status     === 'fulfilled' ? (dbsRes.value?.data     || []) : [];
-    const mappingList = mappingsRes.status === 'fulfilled' ? (mappingsRes.value?.data || []) : [];
+    const dbList      = dbsRes.status      === 'fulfilled' ? (dbsRes.value?.data      || []) : [];
+    const mappingList = mappingsRes.status  === 'fulfilled' ? (mappingsRes.value?.data  || []) : [];
 
-    if (metrics[0]) { metrics[0].querySelector('.metric-val').textContent = dbList.length || '-'; metrics[0].querySelector('.metric-sub').textContent = dbList.map(d => d.name).join(', ') || '-'; }
-    if (metrics[1]) { metrics[1].querySelector('.metric-val').textContent = mappingList.length || '-'; metrics[1].querySelector('.metric-sub').textContent = `${mappingList.length} conversion rules`; }
+    const mDbs = document.getElementById('metricDbs');         if (mDbs) mDbs.textContent = dbList.length || '0';
+    const mDbsSub = document.getElementById('metricDbsSub');   if (mDbsSub) mDbsSub.textContent = dbList.map(d => d.name).join(', ') || '-';
+    const mRules = document.getElementById('metricRules');     if (mRules) mRules.textContent = mappingList.length || '0';
+    const mRulesSub = document.getElementById('metricRulesSub'); if (mRulesSub) mRulesSub.textContent = `${mappingList.length} conversion rules`;
 
     const sessionPayload = sessionsRes.status === 'fulfilled' ? (sessionsRes.value?.data || {}) : {};
     const sessionStats   = sessionPayload.stats    || { active: 0, warning: 0, expired: 0 };
     const sessionList    = sessionPayload.sessions || [];
     const today          = new Date().toISOString().slice(0, 10);
     const createdToday   = sessionList.filter(s => s.created?.startsWith(today)).length;
-    if (metrics[2]) { metrics[2].querySelector('.metric-val').textContent = sessionStats.active + sessionStats.warning; metrics[2].querySelector('.metric-sub').textContent = `${createdToday} created today`; }
+    const mSess = document.getElementById('metricSessions');     if (mSess) mSess.textContent = sessionStats.active + sessionStats.warning;
+    const mSessSub = document.getElementById('metricSessionsSub'); if (mSessSub) mSessSub.textContent = `${createdToday} created today`;
 
     const logList          = logsRes.status === 'fulfilled' ? (logsRes.value?.data || []) : [];
     const conversionsToday = logList.filter(l => l.message?.includes('Convert') && l.timestamp?.startsWith(today)).length;
     const warningsToday    = logList.filter(l => l.level === 'WARNING' && l.timestamp?.startsWith(today)).length;
-    if (metrics[3]) { metrics[3].querySelector('.metric-val').textContent = conversionsToday; metrics[3].querySelector('.metric-sub').textContent = warningsToday ? `⚠ ${warningsToday} warning(s) today` : 'No warnings today'; }
+    const mConv = document.getElementById('metricConversions');     if (mConv) mConv.textContent = conversionsToday;
+    const mConvSub = document.getElementById('metricConversionsSub'); if (mConvSub) mConvSub.textContent = warningsToday ? `⚠ ${warningsToday} warning(s) today` : 'No warnings today';
 
+    // DB Coverage — donut circles
     const coverageList = document.getElementById('dbCoverageList');
-    if (coverageList && dbList.length && mappingList.length) {
+    if (coverageList && dbList.length) {
       const pairCount = {};
       mappingList.forEach(m => { const key = (m.src_db || '').toLowerCase(); pairCount[key] = (pairCount[key] || 0) + 1; });
       const total = Math.max(...Object.values(pairCount), 1);
-      coverageList.innerHTML = dbList.map(db => {
+      const dbColors = ['#00d68f','#0094ff','#a855f7','#f59e0b','#64748b'];
+      const items = dbList.map((db, i) => {
         const key = (db.key || db.name || '').toLowerCase();
         const pct = Math.round(((pairCount[key] || 0) / total) * 100);
-        return `<div class="db-cov-item"><span class="db-cov-name">${db.name}</span><div class="db-cov-bar"><div class="db-cov-fill" style="width:${pct}%"></div></div><span class="db-cov-pct">${pct}%</span></div>`;
-      }).join('');
+        const color = dbColors[i % dbColors.length];
+        const r = 34, circ = 2 * Math.PI * r;
+        const dash = (pct / 100) * circ, gap = circ - dash;
+        return { db, pct, color, r, circ, dash, gap };
+      });
+
+      const donutHTML = items.map(({ db, pct, color, r, circ, dash, gap }) =>
+        `<div class="db-donut-item">
+          <svg width="80" height="80" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="${r}" fill="none" stroke="var(--surface3)" stroke-width="7"/>
+            <circle cx="40" cy="40" r="${r}" fill="none" stroke="${color}" stroke-width="7"
+              stroke-dasharray="${dash.toFixed(1)} ${gap.toFixed(1)}"
+              stroke-dashoffset="${(circ * 0.25).toFixed(1)}"
+              stroke-linecap="round"/>
+            <text x="40" y="44" text-anchor="middle" font-size="13" font-weight="600" fill="var(--text)" font-family="monospace">${pct}%</text>
+          </svg>
+          <div class="db-donut-label">${db.name}</div>
+        </div>`).join('');
+
+      const legendHTML = items.map(({ db, pct, color }) =>
+        `<div class="db-legend-item">
+          <div class="db-legend-left"><div class="db-legend-dot" style="background:${color}"></div><span>${db.name}</span></div>
+          <span class="db-legend-pct">${pct}%</span>
+        </div>`).join('');
+
+      coverageList.innerHTML = `<div class="db-donut-row">${donutHTML}</div><div class="db-legend-grid">${legendHTML}</div>`;
     }
 
+    // Activity feed
     const activityFeed = document.getElementById('activityFeed');
     if (activityFeed && logList.length) {
-      const recent = [...logList].reverse().slice(0, 8);
+      const recent = [...logList].reverse().slice(0, 10);
       activityFeed.innerHTML = recent.map(l => {
         const level    = (l.level || 'INFO').toUpperCase();
         const dotClass = level === 'WARNING' ? 'warn' : level === 'ERROR' ? 'error' : 'success';
-        return `<div class="activity-item"><div class="activity-dot ${dotClass}"></div><div class="activity-body"><div class="activity-msg">${l.message}</div><div class="activity-time">${l.timestamp}</div></div></div>`;
+        const msg = (l.message || '').toLowerCase();
+        const icon = msg.includes('session') ? '🗄️' : msg.includes('convert') ? '📦' : msg.includes('pair') ? '🔗' : msg.includes('background') ? '👤' : '✅';
+        return `<div class="activity-item"><div class="activity-dot ${dotClass}" style="margin-top:8px"></div><div class="activity-icon">${icon}</div><div class="activity-body"><div class="activity-msg">${l.message}</div><div class="activity-time">${l.timestamp}</div></div></div>`;
       }).join('');
     }
 
