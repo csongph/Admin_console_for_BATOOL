@@ -22,6 +22,7 @@ from app.schemas.schemas import APIResponse
 from app.core.security import get_current_user
 from app.db.database import get_db
 from app.db.models import AdminUser, SystemLog
+from app.middleware.logging_middleware import get_recent_request_logs
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["AdminLogs"])
@@ -91,6 +92,13 @@ async def get_admin_logs(
 
     q    = q.limit(limit).offset(offset)
     rows = (await db.execute(q)).scalars().all()
+    logs = [r.to_dict() for r in rows]
+
+    # Fallback: if DB has no rows yet after deploy/restart, return in-memory recent request logs
+    if not logs:
+        memory_logs = get_recent_request_logs(limit=limit)
+        logs = list(reversed(memory_logs))
+        total = len(logs)
 
     return APIResponse(
         success = True,
@@ -99,7 +107,7 @@ async def get_admin_logs(
             "total":  total,
             "limit":  limit,
             "offset": offset,
-            "logs":   [r.to_dict() for r in rows],
+            "logs":   logs,
         },
     )
 
