@@ -2399,7 +2399,9 @@ function setClearMode(mode) {
 
 function selectClearDays(days, btn) {
   _clearDays = days;
-  document.querySelectorAll('[data-days]').forEach(b => b.classList.remove('active'));
+  document.getElementById('clearNowPanel')
+    ?.querySelectorAll('[data-days]')
+    .forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const label = document.getElementById('clearDaysLabel');
   if (label) label.textContent = days === 0 ? 'ทั้งหมด' : `${days} วัน`;
@@ -2461,7 +2463,7 @@ async function confirmClearActivity() {
     await apiCall('/api/activities/clear' + (cutoff ? `?before=${encodeURIComponent(cutoff)}` : ''), { method: 'DELETE' });
     showToast(`เคลียร์ log ${label} สำเร็จ`, 'success');
     closeClearActivityModal();
-    fetchActivities();
+    await fetchActivities();
   } catch (e) {
     showToast('เคลียร์ไม่สำเร็จ: ' + e.message, 'error');
   }
