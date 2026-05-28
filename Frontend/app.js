@@ -2665,7 +2665,7 @@ async function openAdminLogDetail(id) {
 
 async function _fetchAdminSystemLogs() {
   try {
-    const data = await apiCall('/api/logs');
+    const data = await apiCall('/api/admin-logs');
     _alSystemLogs = (data.data || []).reverse(); // newest first
     filterAdminSystemLogs();
     const countEl = document.getElementById('alSystemCount');
