@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import asyncio
+import importlib
 import logging
 
 from app.core.config import settings
@@ -10,11 +11,22 @@ from app.routers import sync as sync_router
 from app.routers.presence    import router as presence_router, _evict_stale
 from app.routers.activity    import router as activity_router
 from app.routers.users       import router as users_router
-from app.routers.admin_logs  import router as admin_logs_router
 from app.middleware.logging_middleware     import LoggingMiddleware
 from app.middleware.maintenance_middleware import MaintenanceMiddleware
 from app.db.database import init_db
 from app import sync_engine
+
+admin_logs_router = None
+for module_name in ("app.routers.admin_logs", "app.routers.adminlogs", "app.routers.admin_log"):
+    try:
+        module = importlib.import_module(module_name)
+        admin_logs_router = module.router
+        break
+    except ModuleNotFoundError:
+        continue
+
+if admin_logs_router is None:
+    raise ImportError("Could not import admin logs router module")
 
 logging.basicConfig(
     level=logging.INFO,
