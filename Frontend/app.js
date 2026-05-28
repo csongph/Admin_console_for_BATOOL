@@ -2338,13 +2338,13 @@ function toggleFieldPw(inputId, iconEl) {
 // ════════════════════════════════════════════════════════════
 
 let _clearMode     = 'now';   // 'now' | 'schedule'
-let _clearDays     = 7;
+let _clearDays     = 0;
 let _schedDays     = 7;
 const SCHED_KEY    = 'ba_activity_clear_schedule';
 
 function openClearActivityModal() {
   _clearMode = 'now';
-  _clearDays = 7;
+  _clearDays = 0;
   _schedDays = parseInt(localStorage.getItem(SCHED_KEY + '_days') || '7');
 
   // reset UI
@@ -2356,8 +2356,8 @@ function openClearActivityModal() {
   document.getElementById('scheduleActiveText').style.display = 'none';
 
   // reset day buttons
-  document.querySelectorAll('[data-days]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.days) === 7));
-  document.getElementById('clearDaysLabel').textContent = '7 วัน';
+  document.querySelectorAll('[data-days]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.days) === 0));
+  document.getElementById('clearDaysLabel').textContent = 'ทั้งหมด';
 
   // schedule buttons
   document.querySelectorAll('[data-sched]').forEach(b => {
@@ -2458,7 +2458,7 @@ async function confirmClearActivity() {
     await apiCall('/api/activities/clear' + (cutoff ? `?before=${encodeURIComponent(cutoff)}` : ''), { method: 'DELETE' });
     showToast(`เคลียร์ log ${label} สำเร็จ`, 'success');
     closeClearActivityModal();
-    fetchActivities();
+    await fetchActivities();
   } catch (e) {
     showToast('เคลียร์ไม่สำเร็จ: ' + e.message, 'error');
   }

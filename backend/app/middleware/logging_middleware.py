@@ -17,6 +17,12 @@ def get_recent_request_logs(limit: int = 200) -> list[dict]:
     return items[-limit:]
 
 
+def clear_recent_request_logs() -> int:
+    count = len(_RECENT_REQUEST_LOGS)
+    _RECENT_REQUEST_LOGS.clear()
+    return count
+
+
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         start = time.perf_counter()

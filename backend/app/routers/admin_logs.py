@@ -22,7 +22,7 @@ from app.schemas.schemas import APIResponse
 from app.core.security import get_current_user
 from app.db.database import get_db
 from app.db.models import AdminUser, SystemLog
-from app.middleware.logging_middleware import get_recent_request_logs
+from app.middleware.logging_middleware import get_recent_request_logs, clear_recent_request_logs
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["AdminLogs"])
@@ -130,8 +130,13 @@ async def clear_admin_logs(
     result  = await db.execute(q)
     await db.commit()
     deleted = result.rowcount
+    memory_deleted = clear_recent_request_logs()
     logger.info("[admin-logs] cleared %d log(s) by %s", deleted, current_user.get("username"))
-    return APIResponse(success=True, message=f"ลบ {deleted} log(s)", data={"deleted": deleted})
+    return APIResponse(
+        success=True,
+        message=f"ลบ {deleted} log(s)",
+        data={"deleted": deleted, "memory_deleted": memory_deleted},
+    )
 
 
 @router.post("/admin-logs", response_model=APIResponse, include_in_schema=False)
