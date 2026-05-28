@@ -35,8 +35,7 @@ class MappingRule(Base):
     confidence:    Mapped[int]            = mapped_column(Integer,     default=100)
     status:        Mapped[str]            = mapped_column(String(32),  default="draft")
     updated:       Mapped[date]           = mapped_column(Date,        default=_today)
-    # ── Sync / audit fields ───────────────────────────────────────────────────
-    error_message: Mapped[Optional[str]]      = mapped_column(String(256), nullable=True, default=None)
+    error_message: Mapped[Optional[str]]  = mapped_column(String(256), nullable=True, default=None)
     synced_at:     Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     retry_count:   Mapped[int]            = mapped_column(Integer, default=0)
 
@@ -146,23 +145,24 @@ class SystemSetting(Base):
     key:   Mapped[str] = mapped_column(String(64),  primary_key=True)
     value: Mapped[str] = mapped_column(String(256), nullable=False, default="")
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 class UpdateActivity(Base):
     """บันทึกทุกครั้งที่ผู้ใช้ทำการ create / update / delete mapping rules"""
     __tablename__ = "update_activities"
     __table_args__ = (
-        Index("ix_activity_user",      "username"),
-        Index("ix_activity_action",    "action"),
-        Index("ix_activity_created_at","created_at"),
+        Index("ix_activity_user",       "username"),
+        Index("ix_activity_action",     "action"),
+        Index("ix_activity_created_at", "created_at"),
     )
 
     id:          Mapped[int]           = mapped_column(Integer,  primary_key=True, autoincrement=True)
     username:    Mapped[str]           = mapped_column(String(128), nullable=False)
-    action:      Mapped[str]           = mapped_column(String(32),  nullable=False)   # create | update | delete | bulk_import
-    target_type: Mapped[str]           = mapped_column(String(64),  default="mapping") # mapping | database | session
+    action:      Mapped[str]           = mapped_column(String(32),  nullable=False)
+    target_type: Mapped[str]           = mapped_column(String(64),  default="mapping")
     target_id:   Mapped[Optional[str]] = mapped_column(String(64),  nullable=True)
     summary:     Mapped[str]           = mapped_column(String(256), default="")
-    detail:      Mapped[Optional[str]] = mapped_column(Text,        nullable=True)    # JSON snapshot ของข้อมูลที่เปลี่ยน
+    detail:      Mapped[Optional[str]] = mapped_column(Text,        nullable=True)
     created_at:  Mapped[datetime]      = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -184,7 +184,7 @@ class UpdateActivity(Base):
 
 # ─────────────────────────────────────────────────────────────────────────────
 class AdminUser(Base):
-    """ผู้ใช้งานระบบ Admin Console — สร้าง/จัดการโดย admin"""
+    """ผู้ใช้งานระบบ Admin Console"""
     __tablename__ = "admin_users"
     __table_args__ = (
         Index("ix_admin_user_username", "username", unique=True),
@@ -193,7 +193,7 @@ class AdminUser(Base):
     id:           Mapped[int]           = mapped_column(Integer,  primary_key=True, autoincrement=True)
     username:     Mapped[str]           = mapped_column(String(128), nullable=False, unique=True)
     hashed_pw:    Mapped[str]           = mapped_column(String(256), nullable=False)
-    role:         Mapped[str]           = mapped_column(String(32),  default="viewer")  # admin | editor | viewer
+    role:         Mapped[str]           = mapped_column(String(32),  default="viewer")
     display_name: Mapped[str]           = mapped_column(String(128), default="")
     is_active:    Mapped[bool]          = mapped_column(Boolean,     default=True)
     created_at:   Mapped[datetime]      = mapped_column(
@@ -212,4 +212,36 @@ class AdminUser(Base):
             "is_active":    self.is_active,
             "created_at":   self.created_at.isoformat() if self.created_at else None,
             "last_login":   self.last_login.isoformat() if self.last_login else None,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+class SystemLog(Base):
+    """Log ระบบของ Admin Console — เก็บ event จาก auth, sync, mapping ฯลฯ"""
+    __tablename__ = "system_logs"
+    __table_args__ = (
+        Index("ix_syslog_level",      "level"),
+        Index("ix_syslog_source",     "source"),
+        Index("ix_syslog_created_at", "created_at"),
+    )
+
+    id:         Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
+    level:      Mapped[str]           = mapped_column(String(16),  default="INFO",   nullable=False)
+    source:     Mapped[str]           = mapped_column(String(64),  default="system", nullable=False)
+    message:    Mapped[str]           = mapped_column(Text,         default="",       nullable=False)
+    detail:     Mapped[Optional[str]] = mapped_column(Text,         nullable=True)
+    created_at: Mapped[datetime]      = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id":         self.id,
+            "level":      self.level,
+            "source":     self.source,
+            "message":    self.message,
+            "detail":     self.detail,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }

@@ -7,10 +7,11 @@ import logging
 from app.core.config import settings
 from app.routers import auth, logs, system, health, mappings, databases, sessions
 from app.routers import sync as sync_router
-from app.routers.presence import router as presence_router, _evict_stale
-from app.routers.activity import router as activity_router
-from app.routers.users    import router as users_router
-from app.middleware.logging_middleware import LoggingMiddleware
+from app.routers.presence    import router as presence_router, _evict_stale
+from app.routers.activity    import router as activity_router
+from app.routers.users       import router as users_router
+from app.routers.admin_logs  import router as admin_logs_router
+from app.middleware.logging_middleware     import LoggingMiddleware
 from app.middleware.maintenance_middleware import MaintenanceMiddleware
 from app.db.database import init_db
 from app import sync_engine
@@ -24,11 +25,11 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="BA Tool API",
     version="1.0.0",
-    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
+    docs_url="/docs"  if settings.ENVIRONMENT != "production" else None,
     redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
 )
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
+# ── Middleware ────────────────────────────────────────────────────────────────
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(MaintenanceMiddleware)
 app.add_middleware(
@@ -51,7 +52,7 @@ async def _seed_env_admin() -> None:
         result = await db.execute(
             select(AdminUser).where(AdminUser.username == settings.ADMIN_USERNAME)
         )
-        user = result.scalar_one_or_none()
+        user   = result.scalar_one_or_none()
         hashed = get_password_hash(settings.ADMIN_PASSWORD)
 
         if user is None:
@@ -63,10 +64,10 @@ async def _seed_env_admin() -> None:
                 is_active    = True,
                 created_at   = datetime.now(timezone.utc),
             ))
-            logger.info("Seeded env superadmin '%s' into admin_users", settings.ADMIN_USERNAME)
+            logger.info("Seeded env superadmin '%s'", settings.ADMIN_USERNAME)
         else:
             user.role = "admin"
-            logger.info("Env superadmin '%s' already exists — password kept as-is", settings.ADMIN_USERNAME)
+            logger.info("Env superadmin '%s' already exists", settings.ADMIN_USERNAME)
 
         await db.commit()
 
@@ -100,6 +101,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(health.router,           prefix="/api")
 app.include_router(auth.router,             prefix="/api/auth")
 app.include_router(logs.router,             prefix="/api")
@@ -111,3 +113,4 @@ app.include_router(sync_router.router,      prefix="/api")
 app.include_router(presence_router)
 app.include_router(activity_router,         prefix="/api")
 app.include_router(users_router,            prefix="/api")
+app.include_router(admin_logs_router,       prefix="/api")

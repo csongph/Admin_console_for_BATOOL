@@ -153,13 +153,16 @@ function navigate(page) {
 
   const bcPage = document.getElementById('bcPage');
   if (bcPage) {
-    const labels = { dashboard:'Dashboard', mapping:'Mapping Manager', databases:'Database Registry', sessions:'Session Monitor', logs:'Log Viewer', settings:'Settings', activity:'Update Activity' };
+    const labels = { dashboard:'Dashboard', mapping:'Mapping Manager', databases:'Database Registry', sessions:'Session Monitor', logs:'Log Viewer', settings:'Settings', activity:'Update Activity', adminlogs:'Admin Logs' };
     bcPage.textContent = labels[page] || page;
   }
   if (page === 'settings') {
     _loadSettingsValues();
     loadSystemSettings();
     fetchMyRole().then(() => loadMaintenanceState());
+  }
+  if (page === 'adminlogs') {
+    fetchAdminLogs();
   }
   if (isMobile()) closeMobileSidebar();
 }
@@ -2399,9 +2402,7 @@ function setClearMode(mode) {
 
 function selectClearDays(days, btn) {
   _clearDays = days;
-  document.getElementById('clearNowPanel')
-    ?.querySelectorAll('[data-days]')
-    .forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('[data-days]').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const label = document.getElementById('clearDaysLabel');
   if (label) label.textContent = days === 0 ? 'ทั้งหมด' : `${days} วัน`;
@@ -2463,7 +2464,7 @@ async function confirmClearActivity() {
     await apiCall('/api/activities/clear' + (cutoff ? `?before=${encodeURIComponent(cutoff)}` : ''), { method: 'DELETE' });
     showToast(`เคลียร์ log ${label} สำเร็จ`, 'success');
     closeClearActivityModal();
-    await fetchActivities();
+    fetchActivities();
   } catch (e) {
     showToast('เคลียร์ไม่สำเร็จ: ' + e.message, 'error');
   }
@@ -2487,3 +2488,260 @@ async function confirmClearActivity() {
     }).catch(() => {});
   }
 })();
+
+// ════════════════════════════════════════════════════════════
+//  ADMIN LOGS PAGE
+//  - Tab 1: Activity Log (admin actions จาก /api/activities)
+//  - Tab 2: System Log   (backend logs จาก /api/logs)
+// ════════════════════════════════════════════════════════════
+
+let _alTab            = 'activity';   // 'activity' | 'system'
+let _alActivityData   = [];           // raw list จาก API
+let _alActivityPage   = 1;
+const AL_PAGE_SIZE    = 20;
+let _alSystemLogs     = [];           // raw log list
+let _alSystemFilter   = 'ALL';
+
+// ── Tab switch ────────────────────────────────────────────────────────────────
+
+function switchAdminLogTab(tab, btn) {
+  _alTab = tab;
+  document.querySelectorAll('.adminlog-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  document.getElementById('adminlog-panel-activity').style.display = tab === 'activity' ? '' : 'none';
+  document.getElementById('adminlog-panel-system').style.display   = tab === 'system'   ? '' : 'none';
+  if (tab === 'system' && !_alSystemLogs.length) _fetchAdminSystemLogs();
+}
+
+// ── Main fetch ────────────────────────────────────────────────────────────────
+
+async function fetchAdminLogs() {
+  await _fetchAdminActivityLogs();
+  if (_alTab === 'system') await _fetchAdminSystemLogs();
+}
+
+// ── Activity Log ──────────────────────────────────────────────────────────────
+
+async function _fetchAdminActivityLogs() {
+  try {
+    const res = await apiCall('/api/activities?limit=200');
+    _alActivityData = res.data?.activities || [];
+    const badge = document.getElementById('adminLogsBadge');
+    if (badge) { badge.textContent = _alActivityData.length; badge.style.display = _alActivityData.length ? '' : 'none'; }
+    _alActivityPage = 1;
+    filterAdminActivity();
+  } catch (e) {
+    showToast('โหลด Activity Log ไม่สำเร็จ: ' + e.message, 'error');
+  }
+}
+
+function _getFilteredAdminActivity() {
+  const user   = (document.getElementById('alSearchUser')?.value   || '').toLowerCase();
+  const action = document.getElementById('alFilterAction')?.value   || '';
+  const target = document.getElementById('alFilterTarget')?.value   || '';
+  const date   = document.getElementById('alFilterDate')?.value     || '';
+  return _alActivityData.filter(a =>
+    (!user   || (a.username || '').toLowerCase().includes(user)) &&
+    (!action || a.action      === action) &&
+    (!target || a.target_type === target) &&
+    (!date   || (a.created_at || '').startsWith(date))
+  );
+}
+
+function filterAdminActivity() {
+  _alActivityPage = 1;
+  _renderAdminActivityTable();
+}
+
+function _renderAdminActivityTable() {
+  const filtered   = _getFilteredAdminActivity();
+  const totalPages = Math.max(1, Math.ceil(filtered.length / AL_PAGE_SIZE));
+  if (_alActivityPage > totalPages) _alActivityPage = 1;
+  const start = (_alActivityPage - 1) * AL_PAGE_SIZE;
+  const page  = filtered.slice(start, start + AL_PAGE_SIZE);
+
+  const tbody = document.getElementById('alActivityBody');
+  if (!tbody) return;
+
+  const countEl = document.getElementById('alActivityCount');
+  if (countEl) countEl.textContent = `แสดง ${filtered.length} รายการ`;
+
+  if (!page.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">ไม่พบข้อมูล</td></tr>`;
+  } else {
+    tbody.innerHTML = page.map(a => {
+      const avatar = (a.username || '?')[0].toUpperCase();
+      const actionClass = { create:'success', update:'warning', delete:'error', bulk_import:'info', login:'active', logout:'draft' }[a.action] || 'draft';
+      const actionLabel = { create:'➕ Create', update:'✏ Update', delete:'✕ Delete', bulk_import:'⬆ Bulk', login:'🔑 Login', logout:'🚪 Logout' }[a.action] || a.action;
+      const dateStr = a.created_at ? (() => {
+        const d = new Date(a.created_at);
+        return `<span style="display:block;font-size:12px;font-weight:600">${d.toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'})}</span><span style="display:block;font-size:11px;color:var(--text3)">${d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>`;
+      })() : '—';
+      return `<tr>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${a.id}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${avatar}</div>
+            <span style="font-weight:500;font-size:13px">${a.username || '—'}</span>
+          </div>
+        </td>
+        <td><span class="badge badge-${actionClass}">${actionLabel}</span></td>
+        <td style="font-size:12px;color:var(--text3)">${a.target_type || '—'}</td>
+        <td style="font-family:var(--mono);font-size:11px">${a.target_id ?? '—'}</td>
+        <td style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(a.summary||'').replace(/"/g,'&quot;')}">${a.summary || '—'}</td>
+        <td>${dateStr}</td>
+        <td><button class="row-btn" title="รายละเอียด" onclick="openAdminLogDetail(${a.id})">🔍</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  // pagination
+  const pag = document.getElementById('alActivityPagination');
+  if (pag) {
+    let html = `<button class="page-btn" onclick="goAlPage(${_alActivityPage-1})" ${_alActivityPage===1?'disabled':''}>‹</button>`;
+    for (let i = 1; i <= totalPages; i++) html += `<button class="page-btn ${i===_alActivityPage?'active':''}" onclick="goAlPage(${i})">${i}</button>`;
+    html += `<button class="page-btn" onclick="goAlPage(${_alActivityPage+1})" ${_alActivityPage===totalPages?'disabled':''}>›</button>`;
+    pag.innerHTML = html;
+  }
+}
+
+function goAlPage(p) {
+  const totalPages = Math.max(1, Math.ceil(_getFilteredAdminActivity().length / AL_PAGE_SIZE));
+  if (p < 1 || p > totalPages) return;
+  _alActivityPage = p;
+  _renderAdminActivityTable();
+}
+
+async function openAdminLogDetail(id) {
+  // reuse existing activity detail modal
+  const overlay = document.getElementById('activityDetailModal');
+  const body    = document.getElementById('activityModalBody');
+  const title   = document.getElementById('activityModalTitle');
+  if (!overlay || !body) return;
+  body.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text3)">กำลังโหลด…</div>`;
+  overlay.classList.remove('hidden');
+  try {
+    const res = await apiCall(`/api/activities/${id}`);
+    const act = res.data;
+    if (title) title.textContent = `Admin Log #${act.id} — ${act.username}`;
+    let detailHtml = '';
+    const detail = act.detail;
+    if (detail && typeof detail === 'object') {
+      const sections = [];
+      if (detail.before)   sections.push({ label:'📷 ก่อนแก้ไข', data:detail.before,   color:'#f87171' });
+      if (detail.after)    sections.push({ label:'✅ หลังแก้ไข', data:detail.after,    color:'#34d399' });
+      if (detail.changes)  sections.push({ label:'✏ ค่าที่เปลี่ยน', data:detail.changes, color:'var(--accent)' });
+      sections.forEach(sec => {
+        detailHtml += `<div style="margin-bottom:20px">
+          <div style="font-size:12px;font-weight:700;color:${sec.color};margin-bottom:8px;padding:0 24px">${sec.label}</div>
+          <div style="background:var(--bg2);border-radius:8px;margin:0 16px;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse">
+              ${Object.entries(sec.data).map(([k,v]) => `<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px 16px;font-size:12px;color:var(--text3);font-family:var(--mono);width:140px">${k}</td><td style="padding:8px 16px;font-size:12px;word-break:break-all">${v===null?'<em style="color:var(--text3)">null</em>':String(v)}</td></tr>`).join('')}
+            </table>
+          </div>
+        </div>`;
+      });
+      if (!sections.length) detailHtml = `<div style="padding:0 24px"><pre style="font-size:11px;background:var(--bg2);padding:16px;border-radius:8px;overflow:auto">${JSON.stringify(detail,null,2)}</pre></div>`;
+    } else {
+      detailHtml = `<div style="padding:0 24px;font-size:13px;color:var(--text3)">ไม่มีรายละเอียดเพิ่มเติม</div>`;
+    }
+    body.innerHTML = `
+      <div style="padding:20px 0 8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:0 24px 20px;border-bottom:1px solid var(--border);margin-bottom:20px">
+          <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">ผู้ใช้งาน</div><div style="font-weight:600;font-size:14px">${act.username}</div></div>
+          <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Action</div><span class="badge badge-${{ create:'success', update:'warning', delete:'error', bulk_import:'info' }[act.action]||'draft'}">${act.action}</span></div>
+          <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Target</div><div style="font-size:13px">${act.target_type}${act.target_id?' #'+act.target_id:''}</div></div>
+          <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">สรุป</div><div style="font-size:13px">${act.summary||'—'}</div></div>
+          <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">วันที่ / เวลา</div><div style="font-size:13px;font-family:var(--mono)">${act.created_at?new Date(act.created_at).toLocaleString('th-TH'):'—'}</div></div>
+        </div>
+        ${detailHtml}
+      </div>`;
+  } catch (e) {
+    body.innerHTML = `<div style="padding:24px;color:var(--error)">โหลดล้มเหลว: ${e.message}</div>`;
+  }
+}
+
+// ── System Log ────────────────────────────────────────────────────────────────
+
+async function _fetchAdminSystemLogs() {
+  try {
+    const data = await apiCall('/api/logs');
+    _alSystemLogs = (data.data || []).reverse(); // newest first
+    filterAdminSystemLogs();
+    const countEl = document.getElementById('alSystemCount');
+    if (countEl) countEl.textContent = `${_alSystemLogs.length} รายการ`;
+  } catch (e) {
+    showToast('โหลด System Log ไม่สำเร็จ: ' + e.message, 'error');
+  }
+}
+
+function setAdminLogFilter(level, btn) {
+  _alSystemFilter = level;
+  document.querySelectorAll('#adminlog-panel-system .log-filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  filterAdminSystemLogs();
+}
+
+function filterAdminSystemLogs() {
+  const search    = (document.getElementById('alSystemSearch')?.value || '').toLowerCase();
+  const terminal  = document.getElementById('alSystemTerminal');
+  if (!terminal) return;
+  terminal.innerHTML = '';
+  const filtered = _alSystemLogs.filter(l =>
+    (_alSystemFilter === 'ALL' || (l.level || '').toUpperCase().startsWith(_alSystemFilter.toUpperCase())) &&
+    (!search || (l.message || '').toLowerCase().includes(search) || (l.timestamp || '').includes(search))
+  );
+  const countEl = document.getElementById('alSystemCount');
+  if (countEl) countEl.textContent = `${filtered.length} / ${_alSystemLogs.length} รายการ`;
+  if (!filtered.length) {
+    terminal.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text3)">ไม่พบ Log ที่ตรงเงื่อนไข</div>`;
+    return;
+  }
+  filtered.slice(0, 300).forEach(l => {
+    const ts  = (l.timestamp || '').slice(0, 19).replace('T', ' ');
+    const lvl = (l.level || 'INFO').toUpperCase();
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-lvl ${lvl.toLowerCase()}">${lvl}</span><span class="log-msg">${l.message || ''}</span>`;
+    terminal.appendChild(line);
+  });
+  terminal.scrollTop = 0;
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+function exportAdminLogs() {
+  if (_alTab === 'activity') {
+    const filtered = _getFilteredAdminActivity();
+    const csv = ['ID,Username,Action,Target,TargetID,Summary,Date',
+      ...filtered.map(a => `${a.id},"${a.username}","${a.action}","${a.target_type}","${a.target_id||''}","${(a.summary||'').replace(/"/g,'""')}","${a.created_at||''}"`)
+    ].join('\n');
+    _downloadText(csv, 'admin_activity_log.csv', 'text/csv');
+  } else {
+    const lines = _alSystemLogs.map(l => `${l.timestamp || ''} [${l.level || 'INFO'}] ${l.message || ''}`).join('\n');
+    _downloadText(lines, 'system_log.txt', 'text/plain');
+  }
+}
+
+function _downloadText(content, filename, mime) {
+  const blob = new Blob([content], { type: mime });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── Clear Admin Activity Log ──────────────────────────────────────────────────
+
+async function clearAdminLogs() {
+  if (_alTab !== 'activity') { showToast('สามารถลบได้เฉพาะ Activity Log เท่านั้น', 'warn'); return; }
+  if (!confirm('ยืนยันลบ Activity Log ทั้งหมด?')) return;
+  try {
+    await apiCall('/api/activities/clear', { method: 'DELETE' });
+    showToast('ลบ Activity Log สำเร็จ', 'success');
+    await _fetchAdminActivityLogs();
+  } catch (e) {
+    showToast('ลบไม่สำเร็จ: ' + e.message, 'error');
+  }
+}

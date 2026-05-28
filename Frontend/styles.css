@@ -1954,3 +1954,35 @@ code { font-family: var(--mono); }
   color: var(--danger);
 }
 .clear-day-btn:hover:not(.active) { color: var(--text); background: var(--surface3); }
+/* ══════════════════════════════════════════════════════
+   ADMIN LOGS PAGE
+══════════════════════════════════════════════════════ */
+
+.adminlog-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+
+.adminlog-tab {
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--sans);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text2);
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+  margin-bottom: -1px;
+}
+
+.adminlog-tab:hover { color: var(--text); }
+
+.adminlog-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}

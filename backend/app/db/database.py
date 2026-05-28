@@ -46,7 +46,7 @@ async def init_db():
 
         # ── Safe migrations (idempotent ALTER TABLE) ──────────────────────────
 
-        # session_records.status_cache (เดิม)
+        # session_records.status_cache
         await conn.execute(text(
             "ALTER TABLE session_records "
             "ADD COLUMN IF NOT EXISTS status_cache VARCHAR(16) DEFAULT 'active'"
@@ -74,4 +74,25 @@ async def init_db():
         await conn.execute(text(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_db_record_key_lower "
             "ON database_records (LOWER(key))"
+        ))
+
+        # ── Migration 007: system_logs ────────────────────────────────────────
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS system_logs (
+                id         SERIAL       PRIMARY KEY,
+                level      VARCHAR(16)  NOT NULL DEFAULT 'INFO',
+                source     VARCHAR(64)  NOT NULL DEFAULT 'system',
+                message    TEXT         NOT NULL DEFAULT '',
+                detail     TEXT,
+                created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_syslog_level      ON system_logs (level)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_syslog_source     ON system_logs (source)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_syslog_created_at ON system_logs (created_at DESC)"
         ))
