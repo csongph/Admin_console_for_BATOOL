@@ -903,23 +903,21 @@
       <div class="page-header">
         <div>
           <h1 class="page-title">Admin Logs</h1>
-          <p class="page-desc">Log กิจกรรมของ Admin และ Log ระบบ BA Tool ฝั่ง Backend</p>
+          <p class="page-desc">Backend/System Log ของ BA Tool</p>
         </div>
         <div class="page-actions">
           <button class="btn btn-ghost" onclick="exportAdminLogs()">⬇ Export</button>
-          <button class="btn btn-ghost" onclick="clearAdminLogs()">🗑 ลบ Log</button>
           <button class="btn btn-secondary" onclick="fetchAdminLogs()">↺ รีเฟรช</button>
         </div>
       </div>
 
-      <!-- Tab switcher -->
+      <!-- Backend log only -->
       <div class="adminlog-tabs">
-        <button class="adminlog-tab active" id="tabAdminActivity" onclick="switchAdminLogTab('activity', this)">🧑‍💼 Activity Log</button>
-        <button class="adminlog-tab" id="tabSystemLog" onclick="switchAdminLogTab('system', this)">🖥 System Log</button>
+        <button class="adminlog-tab active" id="tabSystemLog" onclick="switchAdminLogTab('system', this)">🖥 Backend/System Log</button>
       </div>
 
       <!-- ── ACTIVITY LOG TAB ───────────────────────────── -->
-      <div id="adminlog-panel-activity">
+      <div id="adminlog-panel-activity" style="display:none">
         <!-- Filters -->
         <div class="table-card" style="margin-bottom:16px;padding:14px 20px;">
           <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
@@ -977,7 +975,7 @@
       </div>
 
       <!-- ── SYSTEM LOG TAB ─────────────────────────────── -->
-      <div id="adminlog-panel-system" style="display:none">
+      <div id="adminlog-panel-system">
         <div class="log-toolbar" style="margin-bottom:12px">
           <div class="log-filter-group">
             <button class="log-filter-btn active" data-level="ALL" onclick="setAdminLogFilter('ALL',this)">All</button>

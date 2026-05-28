@@ -2490,12 +2490,10 @@ async function confirmClearActivity() {
 })();
 
 // ════════════════════════════════════════════════════════════
-//  ADMIN LOGS PAGE
-//  - Tab 1: Activity Log (admin actions จาก /api/activities)
-//  - Tab 2: System Log   (backend logs จาก /api/logs)
+//  ADMIN LOGS PAGE (backend/system logs only)
 // ════════════════════════════════════════════════════════════
 
-let _alTab            = 'activity';   // 'activity' | 'system'
+let _alTab            = 'system';     // locked to system logs
 let _alActivityData   = [];           // raw list จาก API
 let _alActivityPage   = 1;
 const AL_PAGE_SIZE    = 20;
@@ -2505,19 +2503,21 @@ let _alSystemFilter   = 'ALL';
 // ── Tab switch ────────────────────────────────────────────────────────────────
 
 function switchAdminLogTab(tab, btn) {
-  _alTab = tab;
+  _alTab = 'system';
   document.querySelectorAll('.adminlog-tab').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  document.getElementById('adminlog-panel-activity').style.display = tab === 'activity' ? '' : 'none';
-  document.getElementById('adminlog-panel-system').style.display   = tab === 'system'   ? '' : 'none';
-  if (tab === 'system' && !_alSystemLogs.length) _fetchAdminSystemLogs();
+  const activityPanel = document.getElementById('adminlog-panel-activity');
+  const systemPanel = document.getElementById('adminlog-panel-system');
+  if (activityPanel) activityPanel.style.display = 'none';
+  if (systemPanel) systemPanel.style.display = '';
+  if (!_alSystemLogs.length) _fetchAdminSystemLogs();
 }
 
 // ── Main fetch ────────────────────────────────────────────────────────────────
 
 async function fetchAdminLogs() {
-  await _fetchAdminActivityLogs();
-  if (_alTab === 'system') await _fetchAdminSystemLogs();
+  _alTab = 'system';
+  await _fetchAdminSystemLogs();
 }
 
 // ── Activity Log ──────────────────────────────────────────────────────────────
@@ -2711,16 +2711,8 @@ function filterAdminSystemLogs() {
 // ── Export ────────────────────────────────────────────────────────────────────
 
 function exportAdminLogs() {
-  if (_alTab === 'activity') {
-    const filtered = _getFilteredAdminActivity();
-    const csv = ['ID,Username,Action,Target,TargetID,Summary,Date',
-      ...filtered.map(a => `${a.id},"${a.username}","${a.action}","${a.target_type}","${a.target_id||''}","${(a.summary||'').replace(/"/g,'""')}","${a.created_at||''}"`)
-    ].join('\n');
-    _downloadText(csv, 'admin_activity_log.csv', 'text/csv');
-  } else {
-    const lines = _alSystemLogs.map(l => `${l.timestamp || ''} [${l.level || 'INFO'}] ${l.message || ''}`).join('\n');
-    _downloadText(lines, 'system_log.txt', 'text/plain');
-  }
+  const lines = _alSystemLogs.map(l => `${l.timestamp || ''} [${l.level || 'INFO'}] ${l.message || ''}`).join('\n');
+  _downloadText(lines, 'backend_system_log.txt', 'text/plain');
 }
 
 function _downloadText(content, filename, mime) {
@@ -2735,13 +2727,5 @@ function _downloadText(content, filename, mime) {
 // ── Clear Admin Activity Log ──────────────────────────────────────────────────
 
 async function clearAdminLogs() {
-  if (_alTab !== 'activity') { showToast('สามารถลบได้เฉพาะ Activity Log เท่านั้น', 'warn'); return; }
-  if (!confirm('ยืนยันลบ Activity Log ทั้งหมด?')) return;
-  try {
-    await apiCall('/api/activities/clear', { method: 'DELETE' });
-    showToast('ลบ Activity Log สำเร็จ', 'success');
-    await _fetchAdminActivityLogs();
-  } catch (e) {
-    showToast('ลบไม่สำเร็จ: ' + e.message, 'error');
-  }
+  showToast('หน้านี้แสดงเฉพาะ Backend/System Log และยังไม่เปิดให้ลบจากหน้านี้', 'info');
 }
