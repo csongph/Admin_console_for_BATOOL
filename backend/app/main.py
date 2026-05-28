@@ -29,6 +29,8 @@ app = FastAPI(
 )
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(MaintenanceMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -37,16 +39,8 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-app.add_middleware(LoggingMiddleware)
-app.add_middleware(MaintenanceMiddleware)
-
 
 async def _seed_env_admin() -> None:
-    """
-    Ensure the env superadmin (ADMIN_USERNAME) has a real record in admin_users.
-    - ถ้ายังไม่มี → insert ใหม่ด้วย role='admin'
-    - ถ้ามีแล้ว → sync password ให้ตรงกับ .env เสมอ (เผื่อเปลี่ยน password ใน .env)
-    """
     from sqlalchemy import select
     from app.db.database import AsyncSessionLocal
     from app.db.models import AdminUser
@@ -71,8 +65,6 @@ async def _seed_env_admin() -> None:
             ))
             logger.info("Seeded env superadmin '%s' into admin_users", settings.ADMIN_USERNAME)
         else:
-            # มี user อยู่แล้ว — คง password เดิมใน DB ไว้ ไม่ override
-            # แค่ ensure role=admin ไม่ให้ถูก downgrade
             user.role = "admin"
             logger.info("Env superadmin '%s' already exists — password kept as-is", settings.ADMIN_USERNAME)
 
@@ -85,11 +77,9 @@ async def on_startup():
     logger.info("Database tables initialized")
     await _seed_env_admin()
 
-    # Presence heartbeat monitor
     asyncio.create_task(_evict_stale())
     logger.info("Presence heartbeat monitor started")
 
-    # Sync engine auto-scheduler
     sync_engine.start_scheduler()
     logger.info("Sync engine scheduler started (interval=%ds)", sync_engine.SYNC_INTERVAL_SECONDS)
 
