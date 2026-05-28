@@ -2,6 +2,10 @@ import time
 import logging
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from datetime import datetime, timezone
+
+from app.db.database import AsyncSessionLocal
+from app.db.models import SystemLog
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +20,27 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             f"{request.method} {request.url.path} "
             f"→ {response.status_code} ({duration_ms:.1f}ms)"
         )
+
+        # Persist admin-backend request logs for /api/admin-logs page.
+        # Keep this best-effort to avoid impacting request flow.
+        try:
+            path = request.url.path or ""
+            if not path.startswith("/api/admin-logs"):
+                level = "ERROR" if response.status_code >= 500 else "WARN" if response.status_code >= 400 else "INFO"
+                message = f"{request.method} {path} -> {response.status_code} ({duration_ms:.1f}ms)"
+                detail = f"client={request.client.host if request.client else '-'} query={request.url.query or '-'}"
+                async with AsyncSessionLocal() as db:
+                    db.add(SystemLog(
+                        level=level,
+                        source="admin-backend",
+                        message=message,
+                        detail=detail,
+                        created_at=datetime.now(timezone.utc),
+                    ))
+                    await db.commit()
+        except Exception as e:
+            logger.warning("Failed to persist system log: %s", e)
+
         # Expose timing in response header
         response.headers["X-Process-Time-Ms"] = f"{duration_ms:.1f}"
         return response

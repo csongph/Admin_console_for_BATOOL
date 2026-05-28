@@ -2691,7 +2691,7 @@ function filterAdminSystemLogs() {
   terminal.innerHTML = '';
   const filtered = _alSystemLogs.filter(l =>
     (_alSystemFilter === 'ALL' || (l.level || '').toUpperCase().startsWith(_alSystemFilter.toUpperCase())) &&
-    (!search || (l.message || '').toLowerCase().includes(search) || (l.timestamp || '').includes(search))
+    (!search || (l.message || '').toLowerCase().includes(search) || (l.timestamp || l.created_at || '').includes(search))
   );
   const countEl = document.getElementById('alSystemCount');
   if (countEl) countEl.textContent = `${filtered.length} / ${_alSystemLogs.length} รายการ`;
@@ -2700,7 +2700,7 @@ function filterAdminSystemLogs() {
     return;
   }
   filtered.slice(0, 300).forEach(l => {
-    const ts  = (l.timestamp || '').slice(0, 19).replace('T', ' ');
+    const ts  = (l.timestamp || l.created_at || '').slice(0, 19).replace('T', ' ');
     const lvl = (l.level || 'INFO').toUpperCase();
     const line = document.createElement('div');
     line.className = 'log-line';
