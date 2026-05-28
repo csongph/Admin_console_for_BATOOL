@@ -284,10 +284,11 @@ async function refreshDashboard() {
     const conversionsToday = logList.filter(l => l.message?.includes('Convert') && l.timestamp?.startsWith(today)).length;
     const warningsToday    = logList.filter(l => l.level === 'WARNING' && l.timestamp?.startsWith(today)).length;
     const errorCountToday  = logList.filter(l => (l.level || '').toUpperCase() === 'ERROR' && l.timestamp?.startsWith(today)).length;
-    const uptimePct        = Math.max(0, 100 - (errorCountToday * 5));
+    const logActiveToday   = logList.filter(l => (l.timestamp || '').startsWith(today)).length;
+    const healthPct        = Math.max(0, 100 - (errorCountToday * 5));
     if (cards[3]) {
-      cards[3].querySelector('.sc-val').textContent = errorCountToday ? 'Degraded' : 'Ready';
-      cards[3].querySelector('.sc-ping').textContent = `${uptimePct}% uptime`;
+      cards[3].querySelector('.sc-val').textContent = logActiveToday ? 'Active' : 'Idle';
+      cards[3].querySelector('.sc-ping').textContent = `${healthPct}% health`;
     }
     if (metrics[3]) { metrics[3].querySelector('.metric-val').textContent = conversionsToday; metrics[3].querySelector('.metric-sub').textContent = warningsToday ? `⚠ ${warningsToday} warning(s) today` : 'No warnings today'; }
 
