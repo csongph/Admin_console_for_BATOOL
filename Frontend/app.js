@@ -2457,18 +2457,8 @@ async function confirmClearActivity() {
   if (!confirm(`ยืนยันลบ log ${label}?`)) return;
 
   try {
-    const token   = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
-    const cutoff  = _clearDays === 0 ? null : (() => { const d = new Date(); d.setDate(d.getDate() - _clearDays); return d.toISOString(); })();
-    const url     = cutoff
-      ? `${typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000'}/api/activities/clear?before=${encodeURIComponent(cutoff)}`
-      : `${typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000'}/api/activities/clear`;
-
-    const res = await fetch(url, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const cutoff = _clearDays === 0 ? null : (() => { const d = new Date(); d.setDate(d.getDate() - _clearDays); return d.toISOString(); })();
+    await apiCall('/api/activities/clear' + (cutoff ? `?before=${encodeURIComponent(cutoff)}` : ''), { method: 'DELETE' });
     showToast(`เคลียร์ log ${label} สำเร็จ`, 'success');
     closeClearActivityModal();
     fetchActivities();
