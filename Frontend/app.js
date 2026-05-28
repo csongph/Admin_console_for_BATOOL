@@ -1,10 +1,4 @@
 function getDefaultApiUrl() {
-  const host = window.location.hostname;
-
-  if (host === '127.0.0.1' || host === 'localhost') {
-    return `${window.location.protocol}//${host}:8000`;
-  }
-
   return 'https://admin-console-for-batool.onrender.com';
 }
 
@@ -2666,7 +2660,15 @@ async function openAdminLogDetail(id) {
 async function _fetchAdminSystemLogs() {
   try {
     const data = await apiCall('/api/admin-logs');
-    _alSystemLogs = (data.data || []).reverse(); // newest first
+    const payload = data?.data;
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.logs)
+        ? payload.logs
+        : Array.isArray(payload?.items)
+          ? payload.items
+          : [];
+    _alSystemLogs = [...list].reverse(); // newest first
     filterAdminSystemLogs();
     const countEl = document.getElementById('alSystemCount');
     if (countEl) countEl.textContent = `${_alSystemLogs.length} รายการ`;
