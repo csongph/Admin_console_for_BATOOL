@@ -489,7 +489,7 @@
 
   <main class="page-content">
 
-    <div class="page" id="page-dashboard">
+    <div class="page dashboard-page" id="page-dashboard">
       <div class="page-header">
         <div>
           <h1 class="page-title">Dashboard</h1>
@@ -500,9 +500,14 @@
         </div>
       </div>
 
+      <div class="dashboard-hero">
+        <div class="dashboard-hero-title">Control Center</div>
+        <div class="dashboard-hero-sub">Track platform health, activity trend, and data coverage in one place.</div>
+      </div>
+
       <div class="status-row">
         <div class="status-card">
-          <div class="sc-indicator online"></div>
+          <div class="sc-icon">🌐</div>
           <div class="sc-info">
             <div class="sc-label">Backend API</div>
             <div class="sc-val">Online</div>
@@ -510,7 +515,7 @@
           <div class="sc-ping">- ms</div>
         </div>
         <div class="status-card">
-          <div class="sc-indicator online"></div>
+          <div class="sc-icon">🛢</div>
           <div class="sc-info">
             <div class="sc-label">PostgreSQL</div>
             <div class="sc-val">Connected</div>
@@ -518,7 +523,7 @@
           <div class="sc-ping">- ms</div>
         </div>
         <div class="status-card">
-          <div class="sc-indicator online"></div>
+          <div class="sc-icon">📦</div>
           <div class="sc-info">
             <div class="sc-label">Cache Store</div>
             <div class="sc-val">Normal</div>
@@ -526,7 +531,7 @@
           <div class="sc-ping">—</div>
         </div>
         <div class="status-card">
-          <div class="sc-indicator online"></div>
+          <div class="sc-icon">🤖</div>
           <div class="sc-info">
             <div class="sc-label">AI Service</div>
             <div class="sc-val">Ready</div>
@@ -537,21 +542,25 @@
 
       <div class="metric-grid">
         <div class="metric-card">
+          <div class="metric-icon">🗄</div>
           <div class="metric-label">Supported Databases</div>
           <div class="metric-val">0</div>
           <div class="metric-sub">-</div>
         </div>
         <div class="metric-card">
+          <div class="metric-icon">🧩</div>
           <div class="metric-label">Total Mapping Rules</div>
           <div class="metric-val">0</div>
           <div class="metric-sub">-</div>
         </div>
         <div class="metric-card">
+          <div class="metric-icon">👥</div>
           <div class="metric-label">Active Sessions</div>
           <div class="metric-val">0</div>
           <div class="metric-sub">-</div>
         </div>
         <div class="metric-card">
+          <div class="metric-icon">⚡</div>
           <div class="metric-label">Conversions Today</div>
           <div class="metric-val">0</div>
           <div class="metric-sub">-</div>
@@ -567,6 +576,7 @@
           <div class="db-coverage-list" id="dbCoverageList">
              <div style="text-align: center; padding: 20px; color: var(--text3);">No coverage data available</div>
           </div>
+          <div class="db-coverage-legend" id="dbCoverageLegend"></div>
         </div>
 
         <div class="card">

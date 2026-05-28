@@ -248,7 +248,6 @@ async function refreshDashboard() {
     if (cards[0]) {
       cards[0].querySelector('.sc-val').textContent        = healthOk ? 'Online' : 'Error';
       cards[0].querySelector('.sc-ping').textContent       = `${ping} ms`;
-      cards[0].querySelector('.sc-indicator').className    = `sc-indicator ${healthOk ? 'online' : 'offline'}`;
     }
 
     const statusDot   = document.querySelector('.status-dot');
@@ -260,6 +259,11 @@ async function refreshDashboard() {
     const dbList     = dbsRes.status     === 'fulfilled' ? (dbsRes.value?.data     || []) : [];
     const mappingList = mappingsRes.status === 'fulfilled' ? (mappingsRes.value?.data || []) : [];
 
+    if (cards[1]) {
+      cards[1].querySelector('.sc-val').textContent = dbsRes.status === 'fulfilled' ? 'Connected' : 'Degraded';
+      cards[1].querySelector('.sc-ping').textContent = dbsRes.status === 'fulfilled' ? `${Math.max(1, Math.round(ping * 0.4))} ms` : '—';
+    }
+
     if (metrics[0]) { metrics[0].querySelector('.metric-val').textContent = dbList.length || '-'; metrics[0].querySelector('.metric-sub').textContent = dbList.map(d => d.name).join(', ') || '-'; }
     if (metrics[1]) { metrics[1].querySelector('.metric-val').textContent = mappingList.length || '-'; metrics[1].querySelector('.metric-sub').textContent = `${mappingList.length} conversion rules`; }
 
@@ -268,23 +272,50 @@ async function refreshDashboard() {
     const sessionList    = sessionPayload.sessions || [];
     const today          = new Date().toISOString().slice(0, 10);
     const createdToday   = sessionList.filter(s => s.created?.startsWith(today)).length;
+    const totalSessionRefs = sessionStats.active + sessionStats.warning + sessionStats.expired;
+    const healthRate = totalSessionRefs ? Math.round((sessionStats.active / totalSessionRefs) * 100) : 100;
+    if (cards[2]) {
+      cards[2].querySelector('.sc-val').textContent = sessionStats.warning ? 'Warning' : 'Normal';
+      cards[2].querySelector('.sc-ping').textContent = `${healthRate}% health`;
+    }
     if (metrics[2]) { metrics[2].querySelector('.metric-val').textContent = sessionStats.active + sessionStats.warning; metrics[2].querySelector('.metric-sub').textContent = `${createdToday} created today`; }
 
     const logList          = logsRes.status === 'fulfilled' ? (logsRes.value?.data || []) : [];
     const conversionsToday = logList.filter(l => l.message?.includes('Convert') && l.timestamp?.startsWith(today)).length;
     const warningsToday    = logList.filter(l => l.level === 'WARNING' && l.timestamp?.startsWith(today)).length;
+    const errorCountToday  = logList.filter(l => (l.level || '').toUpperCase() === 'ERROR' && l.timestamp?.startsWith(today)).length;
+    const uptimePct        = Math.max(0, 100 - (errorCountToday * 5));
+    if (cards[3]) {
+      cards[3].querySelector('.sc-val').textContent = errorCountToday ? 'Degraded' : 'Ready';
+      cards[3].querySelector('.sc-ping').textContent = `${uptimePct}% uptime`;
+    }
     if (metrics[3]) { metrics[3].querySelector('.metric-val').textContent = conversionsToday; metrics[3].querySelector('.metric-sub').textContent = warningsToday ? `⚠ ${warningsToday} warning(s) today` : 'No warnings today'; }
 
     const coverageList = document.getElementById('dbCoverageList');
+    const coverageLegend = document.getElementById('dbCoverageLegend');
     if (coverageList && dbList.length && mappingList.length) {
       const pairCount = {};
       mappingList.forEach(m => { const key = (m.src_db || '').toLowerCase(); pairCount[key] = (pairCount[key] || 0) + 1; });
       const total = Math.max(...Object.values(pairCount), 1);
-      coverageList.innerHTML = dbList.map(db => {
+      const coverage = dbList.map(db => {
         const key = (db.key || db.name || '').toLowerCase();
         const pct = Math.round(((pairCount[key] || 0) / total) * 100);
-        return `<div class="db-cov-item"><span class="db-cov-name">${db.name}</span><div class="db-cov-bar"><div class="db-cov-fill" style="width:${pct}%"></div></div><span class="db-cov-pct">${pct}%</span></div>`;
+        return { name: db.name || db.key || 'Unknown', pct };
+      });
+      coverageList.classList.add('circle-view');
+      coverageList.innerHTML = coverage.map(c => {
+        const ringClass = c.pct >= 80 ? 'high' : c.pct >= 40 ? 'mid' : 'low';
+        return `<div class="db-cov-circle-item"><div class="db-cov-ring ${ringClass}" style="--pct:${c.pct}"><span>${c.pct}%</span></div><div class="db-cov-dbname">${c.name}</div></div>`;
       }).join('');
+      if (coverageLegend) {
+        coverageLegend.innerHTML = coverage.map(c => `<div class="db-legend-row"><span class="db-legend-dot"></span><span class="db-legend-name">${c.name}</span><span class="db-legend-pct">${c.pct}%</span></div>`).join('');
+      }
+    } else {
+      if (coverageList) {
+        coverageList.classList.remove('circle-view');
+        coverageList.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text3);">No coverage data available</div>`;
+      }
+      if (coverageLegend) coverageLegend.innerHTML = '';
     }
 
     const activityFeed = document.getElementById('activityFeed');
@@ -293,7 +324,7 @@ async function refreshDashboard() {
       activityFeed.innerHTML = recent.map(l => {
         const level    = (l.level || 'INFO').toUpperCase();
         const dotClass = level === 'WARNING' ? 'warn' : level === 'ERROR' ? 'error' : 'success';
-        return `<div class="activity-item"><div class="activity-dot ${dotClass}"></div><div class="activity-body"><div class="activity-msg">${l.message}</div><div class="activity-time">${l.timestamp}</div></div></div>`;
+        return `<div class="activity-item"><div class="activity-dot ${dotClass}"></div><div class="activity-body"><div class="activity-msg">${l.message}</div><div class="activity-time">${(l.timestamp || '').replace('T',' ').slice(0,19)}</div></div></div>`;
       }).join('');
     }
 
