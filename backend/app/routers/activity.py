@@ -1,12 +1,3 @@
-"""
-routers/activity.py
-───────────────────
-บันทึกและดึงข้อมูล Update Activity — ใครอัปเดตอะไร เมื่อไหร่
-Endpoints:
-  GET  /api/activities          → list (pagination + filter)
-  GET  /api/activities/{id}     → detail (ดูข้อมูลที่เปลี่ยน)
-  POST /api/activities          → internal — บันทึก activity ใหม่ (helper)
-"""
 import json
 import logging
 from typing import Optional
@@ -14,16 +5,30 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.schemas import APIResponse
 from app.core.security import get_current_user
 from app.db.database import get_db
-from app.db.models import UpdateActivity
+from app.db.models import UpdateActivity, AdminUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Activities"])
+
+
+# ─── Guards ───────────────────────────────────────────────────────────────────
+
+async def require_admin(
+    current_user: dict       = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+) -> dict:
+    username = current_user.get("username", "")
+    result   = await db.execute(select(AdminUser).where(AdminUser.username == username))
+    user     = result.scalar_one_or_none()
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="ต้องเป็น Admin เท่านั้น")
+    return current_user
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -121,6 +126,41 @@ async def get_activity_detail(
             pass
 
     return APIResponse(success=True, message="Activity detail", data=data)
+
+
+@router.delete("/activities/clear", response_model=APIResponse)
+async def clear_activities(
+    before:       Optional[str] = Query(None, description="ISO datetime — ลบ log ที่เก่ากว่านี้ ถ้าไม่ระบุ = ลบทั้งหมด"),
+    db:           AsyncSession  = Depends(get_db),
+    current_user: dict          = Depends(require_admin),
+):
+    """
+    ลบ Update Activity log
+    - ไม่ระบุ before → ลบทั้งหมด
+    - ระบุ before (ISO 8601) → ลบเฉพาะที่ created_at < before
+    """
+    q = delete(UpdateActivity)
+
+    cutoff_dt: Optional[datetime] = None
+    if before:
+        try:
+            cutoff_dt = datetime.fromisoformat(before.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"before ไม่ใช่ ISO datetime ที่ถูกต้อง: {before!r}")
+        q = q.where(UpdateActivity.created_at < cutoff_dt)
+
+    result = await db.execute(q)
+    await db.commit()
+
+    deleted = result.rowcount
+    msg = f"ลบ {deleted} activity record(s)"
+    if cutoff_dt:
+        msg += f" ที่เก่ากว่า {cutoff_dt.isoformat()}"
+    else:
+        msg += " (ทั้งหมด)"
+
+    logger.info("[clear_activities] %s by %s", msg, current_user.get("username"))
+    return APIResponse(success=True, message=msg, data={"deleted": deleted})
 
 
 @router.post("/activities", response_model=APIResponse, include_in_schema=False)

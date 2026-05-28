@@ -497,108 +497,76 @@
 
       <div class="status-row">
         <div class="status-card">
-          <div class="sc-icon sc-icon-api">🌐</div>
-          <div class="sc-body">
-            <div class="sc-top-row">
-              <div class="sc-label">Backend API</div>
-              <div class="sc-ping accent" id="scPingApi">- ms</div>
-            </div>
-            <div class="sc-val-row">
-              <div class="sc-val">Online <span class="sc-dot online"></span></div>
-            </div>
-            <svg class="sc-spark" viewBox="0 0 80 24" preserveAspectRatio="none"><polyline id="sparkApi" points="0,18 13,14 26,16 40,10 53,13 66,8 80,11" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="sc-indicator online"></div>
+          <div class="sc-info">
+            <div class="sc-label">Backend API</div>
+            <div class="sc-val">Online</div>
           </div>
+          <div class="sc-ping">- ms</div>
         </div>
         <div class="status-card">
-          <div class="sc-icon sc-icon-pg">🗄️</div>
-          <div class="sc-body">
-            <div class="sc-top-row">
-              <div class="sc-label">PostgreSQL</div>
-              <div class="sc-ping purple" id="scPingPg">- ms</div>
-            </div>
-            <div class="sc-val-row">
-              <div class="sc-val">Connected <span class="sc-dot online"></span></div>
-            </div>
-            <svg class="sc-spark" viewBox="0 0 80 24" preserveAspectRatio="none"><polyline id="sparkPg" points="0,16 13,12 26,14 40,8 53,11 66,7 80,9" fill="none" stroke="#a855f7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="sc-indicator online"></div>
+          <div class="sc-info">
+            <div class="sc-label">PostgreSQL</div>
+            <div class="sc-val">Connected</div>
           </div>
+          <div class="sc-ping">- ms</div>
         </div>
         <div class="status-card">
-          <div class="sc-icon sc-icon-cache">📦</div>
-          <div class="sc-body">
-            <div class="sc-top-row">
-              <div class="sc-label">Cache Store</div>
-              <div class="sc-ping accent" id="scPingCache">98% hit rate</div>
-            </div>
-            <div class="sc-val-row">
-              <div class="sc-val">Normal <span class="sc-dot online"></span></div>
-            </div>
-            <svg class="sc-spark" viewBox="0 0 80 24" preserveAspectRatio="none"><polyline id="sparkCache" points="0,12 13,10 26,11 40,9 53,10 66,8 80,9" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="sc-indicator online"></div>
+          <div class="sc-info">
+            <div class="sc-label">Cache Store</div>
+            <div class="sc-val">Normal</div>
           </div>
+          <div class="sc-ping">—</div>
         </div>
         <div class="status-card">
-          <div class="sc-icon sc-icon-ai">🤖</div>
-          <div class="sc-body">
-            <div class="sc-top-row">
-              <div class="sc-label">AI Service</div>
-              <div class="sc-ping blue" id="scPingAi">99.9% uptime</div>
-            </div>
-            <div class="sc-val-row">
-              <div class="sc-val">Ready <span class="sc-dot online"></span></div>
-            </div>
-            <svg class="sc-spark" viewBox="0 0 80 24" preserveAspectRatio="none"><polyline id="sparkAi" points="0,14 13,11 26,13 40,7 53,10 66,6 80,8" fill="none" stroke="var(--accent2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="sc-indicator online"></div>
+          <div class="sc-info">
+            <div class="sc-label">AI Service</div>
+            <div class="sc-val">Ready</div>
           </div>
+          <div class="sc-ping">—</div>
         </div>
       </div>
 
       <div class="metric-grid">
         <div class="metric-card">
-          <div class="metric-icon-row">
-            <div class="metric-icon mi-green">🗄️</div>
-          </div>
           <div class="metric-label">Supported Databases</div>
-          <div class="metric-val" id="metricDbs">0</div>
-          <div class="metric-sub" id="metricDbsSub">-</div>
+          <div class="metric-val">0</div>
+          <div class="metric-sub">-</div>
         </div>
         <div class="metric-card">
-          <div class="metric-icon-row">
-            <div class="metric-icon mi-blue">⇄</div>
-          </div>
           <div class="metric-label">Total Mapping Rules</div>
-          <div class="metric-val" id="metricRules">0</div>
-          <div class="metric-sub" id="metricRulesSub">-</div>
+          <div class="metric-val">0</div>
+          <div class="metric-sub">-</div>
         </div>
         <div class="metric-card">
-          <div class="metric-icon-row">
-            <div class="metric-icon mi-orange">👤</div>
-          </div>
           <div class="metric-label">Active Sessions</div>
-          <div class="metric-val" id="metricSessions">0</div>
-          <div class="metric-sub" id="metricSessionsSub">-</div>
+          <div class="metric-val">0</div>
+          <div class="metric-sub">-</div>
         </div>
         <div class="metric-card">
-          <div class="metric-icon-row">
-            <div class="metric-icon mi-purple">⇆</div>
-          </div>
           <div class="metric-label">Conversions Today</div>
-          <div class="metric-val" id="metricConversions">0</div>
-          <div class="metric-sub" id="metricConversionsSub">-</div>
+          <div class="metric-val">0</div>
+          <div class="metric-sub">-</div>
         </div>
       </div>
 
       <div class="dash-bottom">
         <div class="card">
           <div class="card-header">
-            <div class="card-title">🗄 Database Coverage</div>
+            <div class="card-title">Database Coverage</div>
             <button class="btn btn-ghost btn-sm" onclick="navigate('mapping')">View all →</button>
           </div>
-          <div class="db-coverage-donuts" id="dbCoverageList">
-            <div style="text-align:center;padding:20px;color:var(--text3)">No coverage data available</div>
+          <div class="db-coverage-list" id="dbCoverageList">
+             <div style="text-align: center; padding: 20px; color: var(--text3);">No coverage data available</div>
           </div>
         </div>
 
         <div class="card">
           <div class="card-header">
-            <div class="card-title">📈 Recent Activity</div>
+            <div class="card-title">Recent Activity</div>
             <button class="btn btn-ghost btn-sm" onclick="navigate('logs')">View logs →</button>
           </div>
           <div class="activity-feed" id="activityFeed">
@@ -790,6 +758,7 @@
           <p class="page-desc">ติดตามการเปลี่ยนแปลงข้อมูลโดยผู้ใช้งาน — ชื่อ, ID, วันที่ และรายละเอียด</p>
         </div>
         <div class="page-actions">
+          <button class="btn btn-ghost" onclick="openClearActivityModal()">🗑 เคลียร์ Log</button>
           <button class="btn btn-secondary" onclick="fetchActivities()">↺ รีเฟรช</button>
         </div>
       </div>
@@ -854,6 +823,74 @@
           <button class="modal-close" onclick="closeActivityModal()">✕</button>
         </div>
         <div class="modal-body" id="activityModalBody" style="padding:0"></div>
+      </div>
+    </div>
+
+    <!-- Clear Activity Log Modal -->
+    <div class="modal-overlay hidden" id="clearActivityModal" onclick="if(event.target===this)closeClearActivityModal()">
+      <div class="modal" style="max-width:440px">
+        <div class="modal-header">
+          <div class="modal-title">🗑 เคลียร์ Log กิจกรรม</div>
+          <button class="modal-close" onclick="closeClearActivityModal()">✕</button>
+        </div>
+        <div class="modal-body" style="padding:20px 24px;display:flex;flex-direction:column;gap:18px">
+
+          <!-- Mode selector -->
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3)">โหมดการเคลียร์</div>
+            <div style="display:flex;gap:8px">
+              <button class="clear-mode-btn active" id="clearModeNow" onclick="setClearMode('now')">🗑 เคลียร์ทันที</button>
+              <button class="clear-mode-btn" id="clearModeSchedule" onclick="setClearMode('schedule')">⏰ ตั้งเวลาอัตโนมัติ</button>
+            </div>
+          </div>
+
+          <!-- Immediate clear options -->
+          <div id="clearNowPanel">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">เคลียร์ข้อมูลที่เก่ากว่า</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="clear-day-btn active" data-days="7">7 วัน</button>
+              <button class="clear-day-btn" data-days="10">10 วัน</button>
+              <button class="clear-day-btn" data-days="15">15 วัน</button>
+              <button class="clear-day-btn" data-days="30">30 วัน</button>
+              <button class="clear-day-btn" data-days="60">60 วัน</button>
+              <button class="clear-day-btn" data-days="0">ทั้งหมด</button>
+            </div>
+            <div style="margin-top:12px;padding:10px 12px;background:rgba(255,77,109,.06);border:1px solid rgba(255,77,109,.15);border-radius:var(--radius);font-size:12px;color:var(--text2)" id="clearNowPreview">
+              จะลบ log ที่เก่ากว่า <strong id="clearDaysLabel">7 วัน</strong> ออกทั้งหมด
+            </div>
+          </div>
+
+          <!-- Schedule options -->
+          <div id="clearSchedulePanel" style="display:none;flex-direction:column;gap:12px">
+            <div>
+              <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">เคลียร์อัตโนมัติทุก</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="clear-day-btn active" data-sched="7">7 วัน</button>
+                <button class="clear-day-btn" data-sched="10">10 วัน</button>
+                <button class="clear-day-btn" data-sched="15">15 วัน</button>
+                <button class="clear-day-btn" data-sched="30">30 วัน</button>
+              </div>
+            </div>
+            <div id="scheduleStatus" style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);font-size:12px;color:var(--text2)">
+              ระบบจะเคลียร์ log อัตโนมัติ<br>
+              ครั้งถัดไป: <strong id="scheduleNextLabel">—</strong>
+            </div>
+          </div>
+
+        </div>
+        <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;padding:14px 24px;border-top:1px solid var(--border)">
+          <div id="clearScheduleToggleRow" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)">
+            <label class="toggle-wrap" style="display:none" id="scheduleActiveLabel">
+              <input type="checkbox" id="scheduleActive" onchange="toggleScheduleActive()" />
+              <span class="toggle-track"></span>
+            </label>
+            <span id="scheduleActiveText" style="display:none">เปิดใช้งานอัตโนมัติ</span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary" onclick="closeClearActivityModal()">ยกเลิก</button>
+            <button class="btn btn-danger" id="btnConfirmClear" onclick="confirmClearActivity()">ยืนยัน</button>
+          </div>
+        </div>
       </div>
     </div>
 

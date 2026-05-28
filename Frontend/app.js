@@ -249,10 +249,9 @@ async function refreshDashboard() {
     const cards = document.querySelectorAll('.status-card');
     const healthOk = health.status === 'fulfilled' && health.value?.success;
     if (cards[0]) {
-      const _scVal  = cards[0].querySelector('.sc-val');
-      const _scPing = cards[0].querySelector('.sc-ping');
-      if (_scVal)  _scVal.innerHTML  = (healthOk ? 'Online' : 'Error') + ` <span class="sc-dot ${healthOk ? 'online' : 'error'}"></span>`;
-      if (_scPing) _scPing.textContent = `${ping} ms`;
+      cards[0].querySelector('.sc-val').textContent        = healthOk ? 'Online' : 'Error';
+      cards[0].querySelector('.sc-ping').textContent       = `${ping} ms`;
+      cards[0].querySelector('.sc-indicator').className    = `sc-indicator ${healthOk ? 'online' : 'offline'}`;
     }
 
     const statusDot   = document.querySelector('.status-dot');
@@ -260,76 +259,44 @@ async function refreshDashboard() {
     if (statusDot)   statusDot.className    = `status-dot ${healthOk ? 'online' : 'offline'}`;
     if (statusLabel) statusLabel.textContent = healthOk ? 'System Online' : 'System Offline';
 
-    const dbList      = dbsRes.status      === 'fulfilled' ? (dbsRes.value?.data      || []) : [];
-    const mappingList = mappingsRes.status  === 'fulfilled' ? (mappingsRes.value?.data  || []) : [];
+    const metrics    = document.querySelectorAll('.metric-card');
+    const dbList     = dbsRes.status     === 'fulfilled' ? (dbsRes.value?.data     || []) : [];
+    const mappingList = mappingsRes.status === 'fulfilled' ? (mappingsRes.value?.data || []) : [];
 
-    const mDbs = document.getElementById('metricDbs');         if (mDbs) mDbs.textContent = dbList.length || '0';
-    const mDbsSub = document.getElementById('metricDbsSub');   if (mDbsSub) mDbsSub.textContent = dbList.map(d => d.name).join(', ') || '-';
-    const mRules = document.getElementById('metricRules');     if (mRules) mRules.textContent = mappingList.length || '0';
-    const mRulesSub = document.getElementById('metricRulesSub'); if (mRulesSub) mRulesSub.textContent = `${mappingList.length} conversion rules`;
+    if (metrics[0]) { metrics[0].querySelector('.metric-val').textContent = dbList.length || '-'; metrics[0].querySelector('.metric-sub').textContent = dbList.map(d => d.name).join(', ') || '-'; }
+    if (metrics[1]) { metrics[1].querySelector('.metric-val').textContent = mappingList.length || '-'; metrics[1].querySelector('.metric-sub').textContent = `${mappingList.length} conversion rules`; }
 
     const sessionPayload = sessionsRes.status === 'fulfilled' ? (sessionsRes.value?.data || {}) : {};
     const sessionStats   = sessionPayload.stats    || { active: 0, warning: 0, expired: 0 };
     const sessionList    = sessionPayload.sessions || [];
     const today          = new Date().toISOString().slice(0, 10);
     const createdToday   = sessionList.filter(s => s.created?.startsWith(today)).length;
-    const mSess = document.getElementById('metricSessions');     if (mSess) mSess.textContent = sessionStats.active + sessionStats.warning;
-    const mSessSub = document.getElementById('metricSessionsSub'); if (mSessSub) mSessSub.textContent = `${createdToday} created today`;
+    if (metrics[2]) { metrics[2].querySelector('.metric-val').textContent = sessionStats.active + sessionStats.warning; metrics[2].querySelector('.metric-sub').textContent = `${createdToday} created today`; }
 
     const logList          = logsRes.status === 'fulfilled' ? (logsRes.value?.data || []) : [];
     const conversionsToday = logList.filter(l => l.message?.includes('Convert') && l.timestamp?.startsWith(today)).length;
     const warningsToday    = logList.filter(l => l.level === 'WARNING' && l.timestamp?.startsWith(today)).length;
-    const mConv = document.getElementById('metricConversions');     if (mConv) mConv.textContent = conversionsToday;
-    const mConvSub = document.getElementById('metricConversionsSub'); if (mConvSub) mConvSub.textContent = warningsToday ? `⚠ ${warningsToday} warning(s) today` : 'No warnings today';
+    if (metrics[3]) { metrics[3].querySelector('.metric-val').textContent = conversionsToday; metrics[3].querySelector('.metric-sub').textContent = warningsToday ? `⚠ ${warningsToday} warning(s) today` : 'No warnings today'; }
 
-    // DB Coverage — donut circles
     const coverageList = document.getElementById('dbCoverageList');
-    if (coverageList && dbList.length) {
+    if (coverageList && dbList.length && mappingList.length) {
       const pairCount = {};
       mappingList.forEach(m => { const key = (m.src_db || '').toLowerCase(); pairCount[key] = (pairCount[key] || 0) + 1; });
       const total = Math.max(...Object.values(pairCount), 1);
-      const dbColors = ['#00d68f','#0094ff','#a855f7','#f59e0b','#64748b'];
-      const items = dbList.map((db, i) => {
+      coverageList.innerHTML = dbList.map(db => {
         const key = (db.key || db.name || '').toLowerCase();
         const pct = Math.round(((pairCount[key] || 0) / total) * 100);
-        const color = dbColors[i % dbColors.length];
-        const r = 34, circ = 2 * Math.PI * r;
-        const dash = (pct / 100) * circ, gap = circ - dash;
-        return { db, pct, color, r, circ, dash, gap };
-      });
-
-      const donutHTML = items.map(({ db, pct, color, r, circ, dash, gap }) =>
-        `<div class="db-donut-item">
-          <svg width="80" height="80" viewBox="0 0 80 80">
-            <circle cx="40" cy="40" r="${r}" fill="none" stroke="var(--surface3)" stroke-width="7"/>
-            <circle cx="40" cy="40" r="${r}" fill="none" stroke="${color}" stroke-width="7"
-              stroke-dasharray="${dash.toFixed(1)} ${gap.toFixed(1)}"
-              stroke-dashoffset="${(circ * 0.25).toFixed(1)}"
-              stroke-linecap="round"/>
-            <text x="40" y="44" text-anchor="middle" font-size="13" font-weight="600" fill="var(--text)" font-family="monospace">${pct}%</text>
-          </svg>
-          <div class="db-donut-label">${db.name}</div>
-        </div>`).join('');
-
-      const legendHTML = items.map(({ db, pct, color }) =>
-        `<div class="db-legend-item">
-          <div class="db-legend-left"><div class="db-legend-dot" style="background:${color}"></div><span>${db.name}</span></div>
-          <span class="db-legend-pct">${pct}%</span>
-        </div>`).join('');
-
-      coverageList.innerHTML = `<div class="db-donut-row">${donutHTML}</div><div class="db-legend-grid">${legendHTML}</div>`;
+        return `<div class="db-cov-item"><span class="db-cov-name">${db.name}</span><div class="db-cov-bar"><div class="db-cov-fill" style="width:${pct}%"></div></div><span class="db-cov-pct">${pct}%</span></div>`;
+      }).join('');
     }
 
-    // Activity feed
     const activityFeed = document.getElementById('activityFeed');
     if (activityFeed && logList.length) {
-      const recent = [...logList].reverse().slice(0, 10);
+      const recent = [...logList].reverse().slice(0, 8);
       activityFeed.innerHTML = recent.map(l => {
         const level    = (l.level || 'INFO').toUpperCase();
         const dotClass = level === 'WARNING' ? 'warn' : level === 'ERROR' ? 'error' : 'success';
-        const msg = (l.message || '').toLowerCase();
-        const icon = msg.includes('session') ? '🗄️' : msg.includes('convert') ? '📦' : msg.includes('pair') ? '🔗' : msg.includes('background') ? '👤' : '✅';
-        return `<div class="activity-item"><div class="activity-dot ${dotClass}" style="margin-top:8px"></div><div class="activity-icon">${icon}</div><div class="activity-body"><div class="activity-msg">${l.message}</div><div class="activity-time">${l.timestamp}</div></div></div>`;
+        return `<div class="activity-item"><div class="activity-dot ${dotClass}"></div><div class="activity-body"><div class="activity-msg">${l.message}</div><div class="activity-time">${l.timestamp}</div></div></div>`;
       }).join('');
     }
 
@@ -2368,3 +2335,163 @@ function toggleFieldPw(inputId, iconEl) {
   inp.type   = hide ? 'text' : 'password';
   if (iconEl) iconEl.style.color = hide ? 'var(--accent)' : 'var(--text3)';
 }
+
+// ════════════════════════════════════════════════════════════
+//  CLEAR ACTIVITY LOG
+// ════════════════════════════════════════════════════════════
+
+let _clearMode     = 'now';   // 'now' | 'schedule'
+let _clearDays     = 7;
+let _schedDays     = 7;
+const SCHED_KEY    = 'ba_activity_clear_schedule';
+
+function openClearActivityModal() {
+  _clearMode = 'now';
+  _clearDays = 7;
+  _schedDays = parseInt(localStorage.getItem(SCHED_KEY + '_days') || '7');
+
+  // reset UI
+  document.getElementById('clearModeNow').classList.add('active');
+  document.getElementById('clearModeSchedule').classList.remove('active');
+  document.getElementById('clearNowPanel').style.display = '';
+  document.getElementById('clearSchedulePanel').style.display = 'none';
+  document.getElementById('scheduleActiveLabel').style.display = 'none';
+  document.getElementById('scheduleActiveText').style.display = 'none';
+
+  // reset day buttons
+  document.querySelectorAll('[data-days]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.days) === 7));
+  document.getElementById('clearDaysLabel').textContent = '7 วัน';
+
+  // schedule buttons
+  document.querySelectorAll('[data-sched]').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.sched) === _schedDays);
+    b.onclick = () => selectSchedDays(parseInt(b.dataset.sched));
+  });
+  _updateScheduleStatus();
+
+  document.getElementById('clearNowPanel').querySelectorAll('[data-days]').forEach(b => {
+    b.onclick = () => selectClearDays(parseInt(b.dataset.days), b);
+  });
+
+  document.getElementById('btnConfirmClear').textContent = 'ยืนยันเคลียร์';
+  document.getElementById('clearActivityModal').classList.remove('hidden');
+}
+
+function closeClearActivityModal() {
+  document.getElementById('clearActivityModal').classList.add('hidden');
+}
+
+function setClearMode(mode) {
+  _clearMode = mode;
+  document.getElementById('clearModeNow').classList.toggle('active', mode === 'now');
+  document.getElementById('clearModeSchedule').classList.toggle('active', mode === 'schedule');
+  document.getElementById('clearNowPanel').style.display      = mode === 'now' ? '' : 'none';
+  document.getElementById('clearSchedulePanel').style.display = mode === 'schedule' ? 'flex' : 'none';
+  document.getElementById('scheduleActiveLabel').style.display = mode === 'schedule' ? '' : 'none';
+  document.getElementById('scheduleActiveText').style.display  = mode === 'schedule' ? '' : 'none';
+
+  const isActive = !!localStorage.getItem(SCHED_KEY + '_next');
+  const cb = document.getElementById('scheduleActive');
+  if (cb) cb.checked = isActive;
+
+  document.getElementById('btnConfirmClear').textContent = mode === 'schedule' ? 'บันทึกตั้งเวลา' : 'ยืนยันเคลียร์';
+}
+
+function selectClearDays(days, btn) {
+  _clearDays = days;
+  document.querySelectorAll('[data-days]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const label = document.getElementById('clearDaysLabel');
+  if (label) label.textContent = days === 0 ? 'ทั้งหมด' : `${days} วัน`;
+}
+
+function selectSchedDays(days) {
+  _schedDays = days;
+  document.querySelectorAll('[data-sched]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.sched) === days));
+  _updateScheduleStatus();
+}
+
+function toggleScheduleActive() {
+  const cb = document.getElementById('scheduleActive');
+  if (!cb.checked) {
+    localStorage.removeItem(SCHED_KEY + '_next');
+    localStorage.removeItem(SCHED_KEY + '_days');
+  } else {
+    _saveSchedule();
+  }
+  _updateScheduleStatus();
+}
+
+function _saveSchedule() {
+  const next = new Date();
+  next.setDate(next.getDate() + _schedDays);
+  localStorage.setItem(SCHED_KEY + '_next', next.toISOString());
+  localStorage.setItem(SCHED_KEY + '_days', String(_schedDays));
+}
+
+function _updateScheduleStatus() {
+  const nextRaw = localStorage.getItem(SCHED_KEY + '_next');
+  const label   = document.getElementById('scheduleNextLabel');
+  if (!label) return;
+  if (nextRaw) {
+    const d = new Date(nextRaw);
+    label.textContent = d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+  } else {
+    label.textContent = 'ยังไม่ได้ตั้งค่า';
+  }
+}
+
+async function confirmClearActivity() {
+  if (_clearMode === 'schedule') {
+    _saveSchedule();
+    const cb = document.getElementById('scheduleActive');
+    if (cb) cb.checked = true;
+    _updateScheduleStatus();
+    showToast(`ตั้งเวลาเคลียร์ log ทุก ${_schedDays} วัน เรียบร้อย`, 'success');
+    closeClearActivityModal();
+    return;
+  }
+
+  // immediate clear
+  const label = _clearDays === 0 ? 'ทั้งหมด' : `เก่ากว่า ${_clearDays} วัน`;
+  if (!confirm(`ยืนยันลบ log ${label}?`)) return;
+
+  try {
+    const token   = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
+    const cutoff  = _clearDays === 0 ? null : (() => { const d = new Date(); d.setDate(d.getDate() - _clearDays); return d.toISOString(); })();
+    const url     = cutoff
+      ? `${typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000'}/api/activities/clear?before=${encodeURIComponent(cutoff)}`
+      : `${typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000'}/api/activities/clear`;
+
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    showToast(`เคลียร์ log ${label} สำเร็จ`, 'success');
+    closeClearActivityModal();
+    fetchActivities();
+  } catch (e) {
+    showToast('เคลียร์ไม่สำเร็จ: ' + e.message, 'error');
+  }
+}
+
+// Auto-run schedule check on page load
+(function _checkAutoSchedule() {
+  const nextRaw = localStorage.getItem(SCHED_KEY + '_next');
+  const days    = parseInt(localStorage.getItem(SCHED_KEY + '_days') || '7');
+  if (!nextRaw) return;
+  if (new Date() >= new Date(nextRaw)) {
+    const cutoff = (() => { const d = new Date(); d.setDate(d.getDate() - days); return d.toISOString(); })();
+    const token  = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
+    if (!token) return;
+    fetch(`${typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000'}/api/activities/clear?before=${encodeURIComponent(cutoff)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(() => {
+      _saveSchedule(); // set next run
+      console.log('[BA] Auto-cleared activity log older than', days, 'days');
+    }).catch(() => {});
+  }
+})();
