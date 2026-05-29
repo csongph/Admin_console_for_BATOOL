@@ -22,7 +22,7 @@ async def get_sync_status(current_user: dict = Depends(get_current_user)):
     return APIResponse(
         success=True,
         message="Sync status retrieved",
-        data=sync_engine.get_status(),
+        data=await sync_engine.get_status(),
     )
 
 

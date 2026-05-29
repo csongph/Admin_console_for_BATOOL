@@ -170,3 +170,35 @@ async def init_db():
                   AND a.external_key = system_logs.external_key
               )
         """))
+
+        # ── Migration 002: sync target tables ───────────────────────────────
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS datatype_raw_mapping (
+                id           SERIAL PRIMARY KEY,
+                db_id        INTEGER      NOT NULL,
+                source_type  VARCHAR(128) NOT NULL DEFAULT '',
+                raw_type     VARCHAR(128) NOT NULL,
+                logical_type VARCHAR(128) NOT NULL DEFAULT '',
+                standard_id  INTEGER,
+                created_at   TIMESTAMPTZ  DEFAULT NOW(),
+                updated_at   TIMESTAMPTZ  DEFAULT NOW(),
+                CONSTRAINT uq_raw_mapping UNIQUE (db_id, raw_type)
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_raw_mapping_db_id ON datatype_raw_mapping (db_id)"
+        ))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS datatype_mapping (
+                id          SERIAL PRIMARY KEY,
+                db_id       INTEGER      NOT NULL,
+                standard_id INTEGER      NOT NULL,
+                final_type  VARCHAR(128) NOT NULL DEFAULT '',
+                created_at  TIMESTAMPTZ  DEFAULT NOW(),
+                updated_at  TIMESTAMPTZ  DEFAULT NOW(),
+                CONSTRAINT uq_datatype_mapping UNIQUE (db_id, standard_id)
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_datatype_mapping_db_id ON datatype_mapping (db_id)"
+        ))

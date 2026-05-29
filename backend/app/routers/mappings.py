@@ -24,6 +24,7 @@ from app.core.security import get_current_user
 from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import MappingRule, DatatypeStandard
+from app.services import system_service
 from app.routers.activity import record_activity
 
 logger = logging.getLogger(__name__)
@@ -281,8 +282,17 @@ async def bulk_import_mappings(
     """
     if not body.rows:
         raise HTTPException(status_code=422, detail="No rows provided")
-    if len(body.rows) > 1000:
-        raise HTTPException(status_code=422, detail="Maximum 1,000 rows per import")
+
+    settings_vals = await system_service.get_settings(db)
+    try:
+        bulk_limit = max(10, min(int(settings_vals.get("rl_bulk_limit", "5000")), 50000))
+    except ValueError:
+        bulk_limit = 5000
+    if len(body.rows) > bulk_limit:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Maximum {bulk_limit} rows per import (ตั้งค่าได้ใน Rate Limiting)",
+        )
 
     imported, skipped, failed = 0, 0, 0
     errors = []

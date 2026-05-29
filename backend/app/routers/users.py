@@ -24,6 +24,7 @@ from app.schemas.schemas import APIResponse
 from app.core.security import get_current_user, get_password_hash
 from app.db.database import get_db
 from app.db.models import AdminUser
+from app.services import auth_service
 from app.routers.activity import record_activity
 
 logger = logging.getLogger(__name__)
@@ -133,6 +134,12 @@ async def create_user(
     db:           AsyncSession = Depends(get_db),
     current_user: dict         = Depends(require_admin),
 ):
+    min_len = await auth_service.min_password_length(db)
+    if len(body.password) < min_len:
+        raise HTTPException(
+            status_code=422,
+            detail=f"password ต้องมีอย่างน้อย {min_len} ตัวอักษร",
+        )
     # ตรวจซ้ำ
     exist = (await db.execute(select(AdminUser).where(AdminUser.username == body.username))).scalar_one_or_none()
     if exist:
@@ -228,6 +235,13 @@ async def reset_password(
     user   = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="ไม่พบผู้ใช้")
+
+    min_len = await auth_service.min_password_length(db)
+    if len(body.new_password) < min_len:
+        raise HTTPException(
+            status_code=422,
+            detail=f"password ต้องมีอย่างน้อย {min_len} ตัวอักษร",
+        )
 
     user.hashed_pw = get_password_hash(body.new_password)
 

@@ -87,6 +87,14 @@ async def stop_system(
 
 # ── Maintenance ────────────────────────────────────────────────────────────────
 
+@router.get("/settings/public", response_model=APIResponse)
+async def get_public_settings(db: AsyncSession = Depends(get_db)):
+    """Public — ค่าที่ login page / client ต้องใช้ (ไม่ต้อง auth)"""
+    from app.services import auth_service
+    data = await auth_service.get_public_auth_settings(db)
+    return APIResponse(success=True, message="Public settings", data=data)
+
+
 @router.get("/settings", response_model=APIResponse)
 async def get_settings(
     current_user: dict         = Depends(get_current_user),

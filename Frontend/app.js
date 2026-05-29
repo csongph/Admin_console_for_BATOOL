@@ -43,6 +43,14 @@ async function _refreshToken() {
   }
 }
 
+function _formatApiError(detail, fallback) {
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map(d => d.msg || d.message || JSON.stringify(d)).join(', ');
+  if (typeof detail === 'object') return detail.message || detail.msg || JSON.stringify(detail);
+  return String(detail);
+}
+
 async function apiCall(path, options = {}) {
   const token = _getToken();
   let res;
@@ -58,7 +66,15 @@ async function apiCall(path, options = {}) {
   } catch (error) {
     throw new Error(`${error.message} (${API_URL + path})`);
   }
-  const data = await res.json();
+  let data = {};
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    try { data = await res.json(); } catch { data = {}; }
+  } else {
+    const text = await res.text();
+    if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+    return { success: true, message: text, data: null };
+  }
 
   if (res.status === 401) {
     const refreshed = await _refreshToken();
@@ -73,7 +89,7 @@ async function apiCall(path, options = {}) {
     throw new Error('Session expired');
   }
 
-  if (!res.ok) throw new Error(data.detail || data.message || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(_formatApiError(data.detail, data.message || `HTTP ${res.status}`));
   return data;
 }
 
@@ -149,6 +165,9 @@ function navigate(page) {
   if (bcPage) {
     const labels = { dashboard:'Dashboard', mapping:'Mapping Manager', databases:'Database Registry', sessions:'Session Monitor', logs:'Log Viewer', settings:'Settings', activity:'Update Activity', adminlogs:'Admin Logs' };
     bcPage.textContent = labels[page] || page;
+  }
+  if (page === 'activity') {
+    fetchActivities();
   }
   if (page === 'settings') {
     _loadSettingsValues();
@@ -243,11 +262,26 @@ async function refreshDashboard() {
     ]);
     const ping = Date.now() - start;
 
-    const cards = document.querySelectorAll('.status-card');
-    const healthOk = health.status === 'fulfilled' && health.value?.success;
-    if (cards[0]) {
-      cards[0].querySelector('.sc-val').textContent        = healthOk ? 'Online' : 'Error';
-      cards[0].querySelector('.sc-ping').textContent       = `${ping} ms`;
+    const healthData = health.status === 'fulfilled' ? (health.value?.data || {}) : {};
+    const healthOk   = health.status === 'fulfilled' && health.value?.success;
+    const dbOk       = healthData.database !== false;
+
+    const cardByLabel = {};
+    document.querySelectorAll('.status-card').forEach(card => {
+      const label = card.querySelector('.sc-label')?.textContent?.trim();
+      if (label) cardByLabel[label] = card;
+    });
+
+    const apiCard = cardByLabel['Backend API'];
+    if (apiCard) {
+      apiCard.querySelector('.sc-val').textContent  = healthOk ? 'Online' : 'Error';
+      apiCard.querySelector('.sc-ping').textContent = `${ping} ms`;
+    }
+
+    const dbCard = cardByLabel['Database API'] || cardByLabel['PostgreSQL'];
+    if (dbCard) {
+      dbCard.querySelector('.sc-val').textContent  = dbOk ? 'Connected' : 'Degraded';
+      dbCard.querySelector('.sc-ping').textContent = dbOk ? `${Math.max(1, Math.round(ping * 0.4))} ms` : '—';
     }
 
     const statusDot   = document.querySelector('.status-dot');
@@ -259,11 +293,6 @@ async function refreshDashboard() {
     const dbList     = dbsRes.status     === 'fulfilled' ? (dbsRes.value?.data     || []) : [];
     const mappingList = mappingsRes.status === 'fulfilled' ? (mappingsRes.value?.data || []) : [];
 
-    if (cards[1]) {
-      cards[1].querySelector('.sc-val').textContent = dbsRes.status === 'fulfilled' ? 'Connected' : 'Degraded';
-      cards[1].querySelector('.sc-ping').textContent = dbsRes.status === 'fulfilled' ? `${Math.max(1, Math.round(ping * 0.4))} ms` : '—';
-    }
-
     if (metrics[0]) { metrics[0].querySelector('.metric-val').textContent = dbList.length || '-'; metrics[0].querySelector('.metric-sub').textContent = dbList.map(d => d.name).join(', ') || '-'; }
     if (metrics[1]) { metrics[1].querySelector('.metric-val').textContent = mappingList.length || '-'; metrics[1].querySelector('.metric-sub').textContent = `${mappingList.length} conversion rules`; }
 
@@ -274,9 +303,10 @@ async function refreshDashboard() {
     const createdToday   = sessionList.filter(s => s.created?.startsWith(today)).length;
     const totalSessionRefs = sessionStats.active + sessionStats.warning + sessionStats.expired;
     const healthRate = totalSessionRefs ? Math.round((sessionStats.active / totalSessionRefs) * 100) : 100;
-    if (cards[2]) {
-      cards[2].querySelector('.sc-val').textContent = sessionStats.warning ? 'Warning' : 'Normal';
-      cards[2].querySelector('.sc-ping').textContent = `${healthRate}% health`;
+    const sessionCard = cardByLabel['Sessions'] || cardByLabel['Cache Store'];
+    if (sessionCard) {
+      sessionCard.querySelector('.sc-val').textContent  = sessionStats.warning ? 'Warning' : 'Normal';
+      sessionCard.querySelector('.sc-ping').textContent = `${healthRate}% health`;
     }
     if (metrics[2]) { metrics[2].querySelector('.metric-val').textContent = sessionStats.active + sessionStats.warning; metrics[2].querySelector('.metric-sub').textContent = `${createdToday} created today`; }
 
@@ -286,9 +316,10 @@ async function refreshDashboard() {
     const errorCountToday  = logList.filter(l => (l.level || '').toUpperCase() === 'ERROR' && l.timestamp?.startsWith(today)).length;
     const logActiveToday   = logList.filter(l => (l.timestamp || '').startsWith(today)).length;
     const healthPct        = Math.max(0, 100 - (errorCountToday * 5));
-    if (cards[3]) {
-      cards[3].querySelector('.sc-val').textContent = logActiveToday ? 'Active' : 'Idle';
-      cards[3].querySelector('.sc-ping').textContent = `${healthPct}% health`;
+    const logCard = cardByLabel['Log Stream'];
+    if (logCard) {
+      logCard.querySelector('.sc-val').textContent  = logActiveToday ? 'Active' : 'Idle';
+      logCard.querySelector('.sc-ping').textContent = `${healthPct}% health`;
     }
     if (metrics[3]) { metrics[3].querySelector('.metric-val').textContent = conversionsToday; metrics[3].querySelector('.metric-sub').textContent = warningsToday ? `⚠ ${warningsToday} warning(s) today` : 'No warnings today'; }
 
@@ -1072,60 +1103,59 @@ async function runBulkImport() {
   const countEl  = document.getElementById('importProgressCount');
   const labelEl  = document.getElementById('importProgressLabel');
 
+  barEl.style.width = '10%';
+  labelEl.textContent = `กำลัง import ${total} rows…`;
+
+  const rows = _importRows.map(row => ({
+    src_db:       row.src_db      || '',
+    raw_type:     row.raw_type    || '',
+    source_type:  row.source_type || '',
+    logical_type: row.logical_type|| '',
+    master_type:  row.master_type || '',
+    dest_db:      row.dest_db     || '',
+    final_type:   row.final_type  || '',
+    confidence:   row.confidence !== '' ? Number(row.confidence) : 100,
+    status:       row.status      || 'draft',
+  }));
+
   let ok = 0, skipped = 0, failed = 0;
 
-  for (let i = 0; i < total; i++) {
-    const row  = _importRows[i];
-    const pct  = Math.round(((i + 1) / total) * 100);
-    barEl.style.width  = pct + '%';
-    countEl.textContent = `${i + 1} / ${total}`;
-    labelEl.textContent = `Importing row ${i + 1} of ${total}…`;
+  try {
+    const res = await apiCall('/api/mappings/bulk-import', {
+      method: 'POST',
+      body: JSON.stringify({ rows, skip_duplicates: true }),
+    });
+    const m = res.data || {};
+    ok      = m.imported ?? 0;
+    skipped = m.skipped  ?? 0;
+    failed  = m.failed   ?? 0;
+    barEl.style.width = '100%';
+    countEl.textContent = `${total} / ${total}`;
+    labelEl.textContent = `Done! ${ok} imported, ${skipped} skipped, ${failed} failed`;
+    labelEl.style.color = failed > 0 ? 'var(--danger,#ef4444)' : ok > 0 ? '#22c55e' : 'var(--text2)';
 
-    const payload = {
-      src_db:       row.src_db      || '',
-      raw_type:     row.raw_type    || '',
-      source_type:  row.source_type || '',
-      logical_type: row.logical_type|| '',
-      master_type:  row.master_type || '',
-      dest_db:      row.dest_db     || '',
-      final_type:   row.final_type  || '',
-      confidence:   row.confidence !== '' ? Number(row.confidence) : 100,
-      status:       row.status      || 'draft',
-    };
-
-    try {
-      await apiCall('/api/mappings', { method: 'POST', body: JSON.stringify(payload) });
-      ok++;
+    const summary = document.createElement('div');
+    summary.className = 'log-line log-ok';
+    summary.textContent = `✓ Bulk import — imported: ${ok}, skipped: ${skipped}, failed: ${failed}`;
+    logEl.appendChild(summary);
+    (m.errors || []).slice(0, 20).forEach(err => {
       const line = document.createElement('div');
-      line.className = 'log-line log-ok';
-      line.textContent = `✓ [${i+1}] ${payload.src_db} → ${payload.dest_db}  |  ${payload.raw_type}`;
+      line.className = 'log-line log-err';
+      line.textContent = `✗ ${err}`;
       logEl.appendChild(line);
-    } catch (err) {
-      const isDup = err.message && (err.message.includes('409') || err.message.toLowerCase().includes('duplicate'));
-      if (isDup) {
-        skipped++;
-        const line = document.createElement('div');
-        line.className = 'log-line log-skip';
-        line.textContent = `⚠ [${i+1}] Skipped (duplicate): ${payload.raw_type} ${payload.src_db}→${payload.dest_db}`;
-        logEl.appendChild(line);
-      } else {
-        failed++;
-        const line = document.createElement('div');
-        line.className = 'log-line log-err';
-        line.textContent = `✗ [${i+1}] Error: ${err.message}`;
-        logEl.appendChild(line);
-      }
-    }
-
-    logEl.scrollTop = logEl.scrollHeight;
+    });
+    showToast(`Import complete: ${ok} added, ${skipped} skipped, ${failed} failed`, failed > 0 ? 'warn' : 'success');
+    await fetchMappings();
+  } catch (err) {
+    barEl.style.width = '100%';
+    labelEl.textContent = 'Import failed';
+    labelEl.style.color = 'var(--danger,#ef4444)';
+    const line = document.createElement('div');
+    line.className = 'log-line log-err';
+    line.textContent = `✗ ${err.message}`;
+    logEl.appendChild(line);
+    showToast('Import failed: ' + err.message, 'error');
   }
-
-  barEl.style.width  = '100%';
-  labelEl.textContent = `Done! ${ok} imported, ${skipped} skipped, ${failed} failed`;
-  labelEl.style.color = failed > 0 ? 'var(--danger,#ef4444)' : ok > 0 ? '#22c55e' : 'var(--text2)';
-
-  showToast(`Import complete: ${ok} added, ${skipped} skipped, ${failed} failed`, failed > 0 ? 'error' : 'success');
-  await fetchMappings();
 
   runBtn.textContent = 'Close';
   runBtn.disabled    = false;
@@ -1385,7 +1415,10 @@ async function saveDatabase() {
     try { const d = JSON.parse(e.message); msg = d.message || msg; } catch {}
     showToast('Save failed: ' + msg, 'error');
   } finally {
-    if (saveBtn) { saveBtn.classList.remove('btn-loading'); saveBtn.textContent = 'Add Database'; }
+    if (saveBtn) {
+      saveBtn.classList.remove('btn-loading');
+      saveBtn.textContent = editId ? 'Save Changes' : 'Add Database';
+    }
   }
 }
 
@@ -1430,10 +1463,7 @@ function renderOnlineUsers(users, total) {
 
   const active   = users.filter(u => u.idle_seconds < 60).length;
   const expiring = users.filter(u => u.idle_seconds >= 60 && u.idle_seconds < 90).length;
-  const elActive   = document.getElementById('sessActive');
-  const elExpiring = document.getElementById('sessExpiring');
-  if (elActive)   elActive.textContent   = active;
-  if (elExpiring) elExpiring.textContent = expiring;
+  /* sessActive/sessExpiring มาจาก fetchSessions — ไม่ overwrite ด้วย online count */
 
   const tbody = document.getElementById('onlineUsersBody');
   if (!tbody) return;
@@ -1561,9 +1591,13 @@ function filterLogs() {
 }
 
 function clearLogs() {
-  const terminal = document.getElementById('logTerminal');
-  if (terminal) terminal.innerHTML = `<div class="log-line"><span class="log-ts">${new Date().toISOString().slice(0,19).replace('T',' ')}</span><span class="log-lvl info">INFO</span><span class="log-msg">Log terminal cleared by admin</span></div>`;
-  showToast('Logs cleared', 'info');
+  apiCall('/api/logs', { method: 'DELETE' })
+    .then(res => {
+      const terminal = document.getElementById('logTerminal');
+      if (terminal) terminal.innerHTML = '';
+      showToast(`ล้าง log แล้ว (${res.data?.deleted ?? 0} รายการ)`, 'info');
+    })
+    .catch(e => showToast('ล้าง log ไม่สำเร็จ: ' + e.message, 'error'));
 }
 
 function toggleAutoScroll() {
@@ -1600,6 +1634,7 @@ function switchSettings(section, btn) {
   if (target) target.classList.remove('hidden');
   if (section === 'users')                               { fetchMyRole().then(() => fetchUsers()); }
   if (section === 'security' || section === 'ratelimit') { _loadSettingsValues(); loadSystemSettings(); }
+  if (section === 'sync')                               { _loadSettingsValues(); loadSystemSettings().then(() => loadSyncStatus()); }
   if (section === 'general')                             { fetchMyRole().then(() => loadMaintenanceState()); }
 }
 
@@ -1726,14 +1761,15 @@ function clampNumberInput(id, fallback) {
 }
 
 function getSettingsFormValues() {
+  const syncMinutes = clampNumberInput('syncIntervalMinutes', 5);
   return {
     sec_session_timeout: String(clampNumberInput('secSessionTimeout', 60)),
     sec_min_pw_len: String(clampNumberInput('secMinPwLen', 6)),
     sec_max_attempts: String(clampNumberInput('secMaxAttempts', 5)),
     rl_max_req_min: String(clampNumberInput('rlMaxReqMin', 300)),
     rl_bulk_limit: String(clampNumberInput('rlBulkLimit', 5000)),
-    rl_sync_interval: String(clampNumberInput('rlSyncInterval', 300)),
-    rl_max_retry: String(clampNumberInput('rlMaxRetry', 3)),
+    rl_sync_interval: String(Math.max(60, syncMinutes * 60)),
+    rl_max_retry: String(clampNumberInput('syncMaxRetry', 3)),
   };
 }
 
@@ -1748,13 +1784,17 @@ function applySystemSettings(values = {}) {
     secMaxAttempts: 'sec_max_attempts',
     rlMaxReqMin: 'rl_max_req_min',
     rlBulkLimit: 'rl_bulk_limit',
-    rlSyncInterval: 'rl_sync_interval',
-    rlMaxRetry: 'rl_max_retry',
+    syncMaxRetry: 'rl_max_retry',
   };
   Object.entries(map).forEach(([id, key]) => {
     const el = document.getElementById(id);
     if (el && values[key] !== undefined && values[key] !== null) el.value = values[key];
   });
+  const minsEl = document.getElementById('syncIntervalMinutes');
+  if (minsEl && values.rl_sync_interval !== undefined && values.rl_sync_interval !== null) {
+    const sec = parseInt(values.rl_sync_interval, 10);
+    minsEl.value = Math.max(1, Math.min(1440, Math.round((Number.isNaN(sec) ? 300 : sec) / 60)));
+  }
 }
 
 async function loadSystemSettings() {
@@ -1790,8 +1830,6 @@ async function saveSecuritySettings() {
     ['sec_session_timeout', 'sec_min_pw_len', 'sec_max_attempts'],
     'Security'
   );
-  return;
-  showToast('บันทึกการตั้งค่า Security แล้ว', 'success');
 }
 
 async function cleanExpiredSessions() {
@@ -1806,18 +1844,10 @@ async function cleanExpiredSessions() {
 }
 
 async function revokeAllSessions() {
-  if (!confirm('ยืนยันการยกเลิก session ทั้งหมด? ผู้ใช้ทุกคนจะถูก logout')) return;
+  if (!confirm('ยืนยันการยกเลิก session ทั้งหมด? ผู้ใช้ทุกคนจะถูก logout (ยกเว้นคุณ)')) return;
   try {
-    const sessions = await apiCall('/api/sessions');
-    const list     = sessions.data?.sessions || [];
-    let revoked = 0;
-    for (const s of list) {
-      if (s.id && !s.id.startsWith('auth-')) continue;
-      try {
-        await apiCall(`/api/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' });
-        revoked++;
-      } catch { /* ignore individual failures */ }
-    }
+    const res = await apiCall('/api/sessions/all', { method: 'DELETE' });
+    const revoked = res.data?.revoked ?? 0;
     showToast(`ยกเลิก ${revoked} session(s) แล้ว`, 'warn');
     await fetchSessions();
   } catch (e) {
@@ -1829,11 +1859,17 @@ async function revokeAllSessions() {
 
 async function saveRateLimitSettings() {
   await saveSystemSettings(
-    ['rl_max_req_min', 'rl_bulk_limit', 'rl_sync_interval', 'rl_max_retry'],
+    ['rl_max_req_min', 'rl_bulk_limit'],
     'Rate limiting'
   );
-  return;
-  showToast('บันทึกการตั้งค่า Rate Limiting แล้ว', 'success');
+}
+
+async function saveSyncSettings() {
+  await saveSystemSettings(
+    ['rl_sync_interval', 'rl_max_retry'],
+    'Sync'
+  );
+  await loadSyncStatus();
 }
 
 function _loadSettingsValues() {
@@ -1842,15 +1878,18 @@ function _loadSettingsValues() {
   const sa = document.getElementById('secMaxAttempts');
   const rr = document.getElementById('rlMaxReqMin');
   const rb = document.getElementById('rlBulkLimit');
-  const ri = document.getElementById('rlSyncInterval');
-  const rm = document.getElementById('rlMaxRetry');
+  const sm = document.getElementById('syncIntervalMinutes');
+  const sr = document.getElementById('syncMaxRetry');
   if (si) si.value = localStorage.getItem('sec_session_timeout') || 60;
   if (sp) sp.value = localStorage.getItem('sec_min_pw_len') || 6;
   if (sa) sa.value = localStorage.getItem('sec_max_attempts') || 5;
   if (rr) rr.value = localStorage.getItem('rl_max_req_min') || 300;
   if (rb) rb.value = localStorage.getItem('rl_bulk_limit') || 5000;
-  if (ri) ri.value = localStorage.getItem('rl_sync_interval') || 300;
-  if (rm) rm.value = localStorage.getItem('rl_max_retry') || 3;
+  if (sm) {
+    const sec = parseInt(localStorage.getItem('rl_sync_interval') || '300', 10);
+    sm.value = Math.max(1, Math.round((Number.isNaN(sec) ? 300 : sec) / 60));
+  }
+  if (sr) sr.value = localStorage.getItem('rl_max_retry') || 3;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1882,21 +1921,57 @@ if (globalSearch) {
 //  SYNC ENGINE TRIGGER
 // ════════════════════════════════════════════════════════════
 
+async function loadSyncStatus() {
+  const panel = document.getElementById('syncStatusPanel');
+  if (!panel) return;
+  try {
+    const res = await apiCall('/api/sync/status');
+    const s = res.data || {};
+    const m = s.last_metrics || {};
+    const lastRun = s.last_run_at
+      ? new Date(s.last_run_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium' })
+      : 'ยังไม่เคยรัน';
+    const intervalMin = s.interval_minutes ?? Math.round((s.interval_seconds || 300) / 60);
+    const stateLabel = s.running
+      ? '<span style="color:var(--warn,#f59e0b)">● กำลังซิงค์…</span>'
+      : (s.scheduler_active
+        ? '<span style="color:var(--success,#22c55e)">● พร้อม (scheduler ทำงาน)</span>'
+        : '<span style="color:var(--danger,#ef4444)">● Scheduler หยุด</span>');
+    panel.innerHTML = `
+      <div>${stateLabel}</div>
+      <div>ช่วงเวลาอัตโนมัติ: <strong>${intervalMin}</strong> นาที</div>
+      <div>รอบล่าสุด: ${lastRun}</div>
+      <div>ผลลัพธ์ล่าสุด — processed: ${m.processed ?? 0}, synced: ${m.synced ?? 0}, errors: ${m.errors ?? 0}${m.elapsed_seconds != null ? ` (${m.elapsed_seconds}s)` : ''}</div>
+    `;
+  } catch (e) {
+    panel.textContent = 'โหลดสถานะไม่สำเร็จ: ' + e.message;
+  }
+}
+
 async function triggerSync() {
   const btn = document.getElementById('syncBtn');
-  if (btn) { btn.classList.add('btn-loading'); btn.textContent = '⟳ Syncing…'; }
+  if (btn) { btn.classList.add('btn-loading'); btn.disabled = true; btn.textContent = '⟳ กำลังซิงค์…'; }
   try {
     const res = await apiCall('/api/sync/run', { method: 'POST' });
     const m   = res.data || {};
     showToast(
-      `Sync complete — ${m.synced ?? 0} synced, ${m.errors ?? 0} error(s)`,
+      `ซิงค์เสร็จ — synced ${m.synced ?? 0}, errors ${m.errors ?? 0}`,
       (m.errors ?? 0) > 0 ? 'warn' : 'success',
     );
     await fetchMappings();
+    await loadSyncStatus();
   } catch (e) {
-    showToast('Sync failed: ' + e.message, 'error');
+    if (/already in progress/i.test(e.message)) {
+      showToast('กำลังซิงค์อยู่แล้ว — รอสักครู่แล้วลองใหม่', 'warn');
+    } else {
+      showToast('ซิงค์ล้มเหลว: ' + e.message, 'error');
+    }
   } finally {
-    if (btn) { btn.classList.remove('btn-loading'); btn.textContent = '⟳ Sync Pending'; }
+    if (btn) {
+      btn.classList.remove('btn-loading');
+      btn.disabled = false;
+      btn.textContent = '⟳ ซิงค์ทันที';
+    }
   }
 }
 
@@ -2276,8 +2351,10 @@ async function saveUser() {
     } else unErr?.classList.add('hidden');
 
     const pwErr = document.getElementById('uPasswordErr');
-    if (!password || password.length < 6) {
+    const minPw = parseInt(localStorage.getItem('sec_min_pw_len') || '6', 10) || 6;
+    if (!password || password.length < minPw) {
       pwErr?.classList.remove('hidden');
+      if (pwErr) pwErr.textContent = `Password ต้องมีอย่างน้อย ${minPw} ตัวอักษร`;
       valid = false;
     } else pwErr?.classList.add('hidden');
   }
@@ -2472,12 +2549,19 @@ function _updateScheduleStatus() {
 
 async function confirmClearActivity() {
   if (_clearMode === 'schedule') {
-    _saveSchedule();
-    const cb = document.getElementById('scheduleActive');
-    if (cb) cb.checked = true;
-    _updateScheduleStatus();
-    showToast(`ตั้งเวลาเคลียร์ log ทุก ${_schedDays} วัน เรียบร้อย`, 'success');
-    closeClearActivityModal();
+    try {
+      await apiCall('/api/activities/retention', {
+        method: 'PUT',
+        body: JSON.stringify({ enabled: true, interval_days: _schedDays }),
+      });
+      const cb = document.getElementById('scheduleActive');
+      if (cb) cb.checked = true;
+      _updateScheduleStatus();
+      showToast(`ตั้งเวลาเคลียร์ log บน server ทุก ${_schedDays} วัน เรียบร้อย`, 'success');
+      closeClearActivityModal();
+    } catch (e) {
+      showToast('บันทึก schedule ไม่สำเร็จ: ' + e.message, 'error');
+    }
     return;
   }
 
@@ -2496,24 +2580,7 @@ async function confirmClearActivity() {
   }
 }
 
-// Auto-run schedule check on page load
-(function _checkAutoSchedule() {
-  const nextRaw = localStorage.getItem(SCHED_KEY + '_next');
-  const days    = parseInt(localStorage.getItem(SCHED_KEY + '_days') || '7');
-  if (!nextRaw) return;
-  if (new Date() >= new Date(nextRaw)) {
-    const cutoff = (() => { const d = new Date(); d.setDate(d.getDate() - days); return d.toISOString(); })();
-    const token  = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
-    if (!token) return;
-    fetch(`${typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000'}/api/activities/clear?before=${encodeURIComponent(cutoff)}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    }).then(() => {
-      _saveSchedule(); // set next run
-      console.log('[BA] Auto-cleared activity log older than', days, 'days');
-    }).catch(() => {});
-  }
-})();
+// Auto-run schedule check removed — ใช้ server scheduler แทน (PUT /api/activities/retention)
 
 // ════════════════════════════════════════════════════════════
 //  ADMIN LOGS PAGE (backend/system logs only)
@@ -2835,6 +2902,17 @@ async function saveSystemLogRetention() {
     await _loadSystemLogRetention();
   } catch (e) {
     showToast('บันทึกไม่สำเร็จ: ' + e.message, 'error');
+  }
+}
+
+async function runSystemLogRetentionNow() {
+  try {
+    const res = await apiCall('/api/admin-logs/retention/run', { method: 'POST' });
+    showToast(res.message || 'รันลบ log เก่าแล้ว', 'success');
+    await _loadSystemLogRetention();
+    await _fetchAdminSystemLogs();
+  } catch (e) {
+    showToast('รัน retention ไม่สำเร็จ: ' + e.message, 'error');
   }
 }
 

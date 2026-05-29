@@ -77,6 +77,29 @@ async def register_session(
     return APIResponse(success=True, message=message, data=record.to_dict())
 
 
+@router.delete("/sessions/all", response_model=APIResponse)
+async def revoke_all_sessions(
+    db:           AsyncSession = Depends(get_db),
+    current_user: dict         = Depends(get_current_user),
+):
+    """ยกเลิก session ทั้งหมด (ยกเว้น session ของ admin ที่เรียก endpoint นี้)"""
+    my_id = f"auth-{current_user.get('username', '')}"
+    result = await db.execute(select(SessionRecord))
+    rows   = result.scalars().all()
+    revoked = 0
+    for r in rows:
+        if r.id == my_id:
+            continue
+        await db.delete(r)
+        revoked += 1
+    await db.commit()
+    return APIResponse(
+        success=True,
+        message=f"{revoked} session(s) revoked",
+        data={"revoked": revoked},
+    )
+
+
 @router.delete("/sessions/{session_id}", response_model=APIResponse)
 async def revoke_session(
     session_id:   str,

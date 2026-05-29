@@ -524,7 +524,7 @@
         <div class="status-card">
           <div class="sc-icon">🛢</div>
           <div class="sc-info">
-            <div class="sc-label">PostgreSQL</div>
+            <div class="sc-label">Database API</div>
             <div class="sc-val">Connected</div>
           </div>
           <div class="sc-ping">- ms</div>
@@ -532,7 +532,7 @@
         <div class="status-card">
           <div class="sc-icon">📦</div>
           <div class="sc-info">
-            <div class="sc-label">Cache Store</div>
+            <div class="sc-label">Sessions</div>
             <div class="sc-val">Normal</div>
           </div>
           <div class="sc-ping">—</div>
@@ -692,7 +692,7 @@
       <div class="session-stats">
         <div class="sess-stat"><span class="sess-stat-num" id="sessActive">0</span><span class="sess-stat-label">Active</span></div>
         <div class="sess-stat"><span class="sess-stat-num warn" id="sessExpiring">0</span><span class="sess-stat-label">Expiring Soon</span></div>
-        <div class="sess-stat"><span class="sess-stat-num muted" id=sessExpired>0</span><span class="sess-stat-label">Expired Today</span></div>
+        <div class="sess-stat"><span class="sess-stat-num muted" id="sessExpired">0</span><span class="sess-stat-label">Expired Today</span></div>
       </div>
 
       <div class="table-card" style="margin-bottom:24px">
@@ -729,7 +729,9 @@
             <thead>
               <tr>
                 <th>Session ID</th>
-                <th>Source DB</th>
+                <th>User</th>
+                <th>Role</th>
+                <th>DB</th>
                 <th>Tables</th>
                 <th>Created</th>
                 <th>TTL Remaining</th>
@@ -1091,6 +1093,7 @@
           </div>
         </div>
         <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid var(--border)">
+          <button class="btn btn-ghost btn-sm" onclick="runSystemLogRetentionNow()">▶ รันทันที</button>
           <button class="btn btn-secondary" onclick="closeSystemLogRetentionModal()">ยกเลิก</button>
           <button class="btn btn-primary" onclick="saveSystemLogRetention()">บันทึก</button>
         </div>
@@ -1112,6 +1115,7 @@
           <button class="settings-nav-item" data-section="security" onclick="switchSettings('security', this)">Security</button>
           <button class="settings-nav-item" data-section="upload" onclick="switchSettings('upload', this)">Upload</button>
           <button class="settings-nav-item" data-section="ratelimit" onclick="switchSettings('ratelimit', this)">Rate Limiting</button>
+          <button class="settings-nav-item" data-section="sync" onclick="switchSettings('sync', this)">🔄 Sync</button>
         </div>
 
         <div class="settings-body">
@@ -1343,29 +1347,49 @@ MySQL,INT,PostgreSQL,INTEGER,approved</pre>
                 </div>
               </div>
             </div>
+            <div style="margin-top:20px;display:flex;justify-content:flex-end">
+              <button class="btn btn-primary btn-sm" onclick="saveRateLimitSettings()">บันทึกการตั้งค่า</button>
+            </div>
+          </div>
+
+          <!-- ══ SYNC ENGINE SECTION ════════════════════════════════════════ -->
+          <div class="settings-section hidden" id="settings-sync">
             <div class="settings-group">
-              <div class="settings-group-title">Sync Engine</div>
+              <div class="settings-group-title">Sync Engine — Mapping Rules → BA Tool</div>
               <div class="setting-row">
                 <div class="setting-info">
-                  <div class="setting-label">Sync Interval (วินาที)</div>
-                  <div class="setting-desc">ความถี่ในการ sync mapping rules อัตโนมัติ</div>
+                  <div class="setting-label">ช่วงเวลาซิงค์อัตโนมัติ (นาที)</div>
+                  <div class="setting-desc">ระบบจะ sync mapping rules ไปยัง BA Tool ทุก N นาที (1–1440)</div>
                 </div>
                 <div class="setting-control">
-                  <input type="number" class="form-input" id="rlSyncInterval" min="30" max="86400" value="300" style="width:110px" />
+                  <input type="number" class="form-input" id="syncIntervalMinutes" min="1" max="1440" value="5" style="width:110px" />
+                  <span style="margin-left:8px;color:var(--text3);font-size:13px">นาที</span>
                 </div>
               </div>
               <div class="setting-row">
                 <div class="setting-info">
-                  <div class="setting-label">Max Retry per Rule</div>
+                  <div class="setting-label">Max Retry ต่อ Rule</div>
                   <div class="setting-desc">จำนวนครั้งที่ retry เมื่อ sync ล้มเหลว</div>
                 </div>
                 <div class="setting-control">
-                  <input type="number" class="form-input" id="rlMaxRetry" min="0" max="10" value="3" style="width:110px" />
+                  <input type="number" class="form-input" id="syncMaxRetry" min="0" max="10" value="3" style="width:110px" />
                 </div>
               </div>
             </div>
+
+            <div class="settings-group" style="margin-top:16px">
+              <div class="settings-group-title">สถานะ Sync</div>
+              <div id="syncStatusPanel" class="sync-status-panel" style="padding:12px 0;color:var(--text2);font-size:13px;line-height:1.7">
+                กำลังโหลด…
+              </div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+                <button class="btn btn-primary btn-sm" id="syncBtn" onclick="triggerSync()">⟳ ซิงค์ทันที</button>
+                <button class="btn btn-ghost btn-sm" onclick="loadSyncStatus()">↻ รีเฟรชสถานะ</button>
+              </div>
+            </div>
+
             <div style="margin-top:20px;display:flex;justify-content:flex-end">
-              <button class="btn btn-primary btn-sm" onclick="saveRateLimitSettings()">บันทึกการตั้งค่า</button>
+              <button class="btn btn-primary btn-sm" onclick="saveSyncSettings()">บันทึกการตั้งค่า Sync</button>
             </div>
           </div>
         </div>
@@ -1637,11 +1661,22 @@ MySQL,INT,PostgreSQL,INTEGER,approved</pre>
    LOGIN LOGIC
 ══════════════════════════════════════ */
 
-const MAX_ATTEMPTS = 5;
+let MAX_ATTEMPTS = 5;
 const LOCKOUT_MS   = 15 * 60 * 1000;
 
 let failedAttempts = 0;
 let lockedUntil    = null;
+
+(async function loadPublicAuthSettings() {
+  try {
+    const apiBase = typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000';
+    const res = await fetch(`${apiBase}/api/system/settings/public`);
+    const json = await res.json();
+    if (json.success && json.data?.sec_max_attempts) {
+      MAX_ATTEMPTS = parseInt(json.data.sec_max_attempts, 10) || 5;
+    }
+  } catch { /* use default */ }
+})();
 
 (function checkSession() {
   const token = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
@@ -1767,7 +1802,16 @@ async function doLogin() {
     });
     const json = await res.json();
 
-    if (!res.ok) throw new Error(json.detail || json.message || 'Invalid credentials');
+    if (!res.ok) {
+      if (res.status === 429) {
+        failedAttempts = MAX_ATTEMPTS;
+        lockedUntil = Date.now() + LOCKOUT_MS;
+        showLoginError(json.detail || 'Too many failed attempts. Account locked.', false);
+        if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+        return;
+      }
+      throw new Error(json.detail || json.message || 'Invalid credentials');
+    }
 
     const token = json.data.access_token;
 

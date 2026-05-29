@@ -23,6 +23,8 @@ async def _scheduler_loop():
         try:
             async with AsyncSessionLocal() as db:
                 await log_retention_service.run_scheduled_retention(db)
+                from app.routers import activity as activity_router
+                await activity_router.run_scheduled_activity_clear(db)
         except Exception as e:
             logger.error("[log-retention] Scheduler error: %s", e)
         await asyncio.sleep(CHECK_INTERVAL_SECONDS)

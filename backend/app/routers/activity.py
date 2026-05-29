@@ -1,7 +1,7 @@
 import json
 import logging
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.schemas import APIResponse
 from app.core.security import get_current_user
 from app.db.database import get_db
-from app.db.models import UpdateActivity, AdminUser
+from app.db.models import UpdateActivity, AdminUser, SystemSetting
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Activities"])
@@ -130,6 +130,112 @@ async def clear_activities(
 
     logger.info("[clear_activities] %s by %s", msg, current_user.get("username"))
     return APIResponse(success=True, message=msg, data={"deleted": deleted})
+
+
+# ── Activity auto-clear schedule (server-side) ───────────────────────────────
+
+KEY_ACTIVITY_SCHEDULE_ENABLED = "activity_schedule_enabled"
+KEY_ACTIVITY_SCHEDULE_DAYS    = "activity_schedule_days"
+KEY_ACTIVITY_SCHEDULE_LAST    = "activity_schedule_last_run"
+
+_ACTIVITY_DEFAULTS = {
+    KEY_ACTIVITY_SCHEDULE_ENABLED: "false",
+    KEY_ACTIVITY_SCHEDULE_DAYS:    "7",
+    KEY_ACTIVITY_SCHEDULE_LAST:    "",
+}
+
+
+async def _activity_setting(db: AsyncSession, key: str) -> str:
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+    row = result.scalar_one_or_none()
+    return row.value if row else _ACTIVITY_DEFAULTS.get(key, "")
+
+
+async def _set_activity_setting(db: AsyncSession, key: str, value: str) -> None:
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+    row = result.scalar_one_or_none()
+    if row:
+        row.value = value
+    else:
+        db.add(SystemSetting(key=key, value=value))
+
+
+class ActivityRetentionRequest(BaseModel):
+    enabled:       bool
+    interval_days: int = 7
+
+
+@router.get("/activities/retention", response_model=APIResponse)
+async def get_activity_retention(
+    db:           AsyncSession = Depends(get_db),
+    current_user: dict         = Depends(require_admin),
+):
+    enabled = await _activity_setting(db, KEY_ACTIVITY_SCHEDULE_ENABLED)
+    days_raw = await _activity_setting(db, KEY_ACTIVITY_SCHEDULE_DAYS)
+    last_run = await _activity_setting(db, KEY_ACTIVITY_SCHEDULE_LAST)
+    try:
+        days = max(1, int(days_raw or "7"))
+    except ValueError:
+        days = 7
+    return APIResponse(
+        success=True,
+        message="Activity retention settings",
+        data={
+            "enabled":       enabled == "true",
+            "interval_days": days,
+            "last_run":      last_run or None,
+        },
+    )
+
+
+@router.put("/activities/retention", response_model=APIResponse)
+async def set_activity_retention(
+    body:         ActivityRetentionRequest,
+    db:           AsyncSession = Depends(get_db),
+    current_user: dict         = Depends(require_admin),
+):
+    days = max(1, min(body.interval_days, 365))
+    await _set_activity_setting(db, KEY_ACTIVITY_SCHEDULE_ENABLED, "true" if body.enabled else "false")
+    await _set_activity_setting(db, KEY_ACTIVITY_SCHEDULE_DAYS, str(days))
+    await db.commit()
+    return APIResponse(
+        success=True,
+        message="Activity schedule saved",
+        data={"enabled": body.enabled, "interval_days": days},
+    )
+
+
+async def run_scheduled_activity_clear(db: AsyncSession) -> Optional[dict]:
+    """เรียกจาก log retention scheduler — ลบ activity เก่ากว่า interval_days"""
+    enabled = await _activity_setting(db, KEY_ACTIVITY_SCHEDULE_ENABLED)
+    if enabled != "true":
+        return None
+
+    days_raw = await _activity_setting(db, KEY_ACTIVITY_SCHEDULE_DAYS)
+    last_raw = await _activity_setting(db, KEY_ACTIVITY_SCHEDULE_LAST)
+    try:
+        interval_days = max(1, int(days_raw or "7"))
+    except ValueError:
+        interval_days = 7
+
+    now = datetime.now(timezone.utc)
+    if last_raw:
+        try:
+            last_dt = datetime.fromisoformat(last_raw.replace("Z", "+00:00"))
+            if (now - last_dt).total_seconds() < interval_days * 86400:
+                return None
+        except ValueError:
+            pass
+
+    cutoff = now - timedelta(days=interval_days)
+    result = await db.execute(
+        delete(UpdateActivity).where(UpdateActivity.created_at < cutoff)
+    )
+    await _set_activity_setting(db, KEY_ACTIVITY_SCHEDULE_LAST, now.isoformat())
+    await db.commit()
+    deleted = result.rowcount
+    logger.info("[activity-retention] Deleted %d records older than %s days", deleted, interval_days)
+    return {"deleted": deleted, "interval_days": interval_days}
 
 
 # ── /activities/{activity_id} ต้องอยู่หลัง /activities/clear เสมอ ──────────

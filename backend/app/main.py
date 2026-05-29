@@ -13,6 +13,7 @@ from app.routers.activity    import router as activity_router
 from app.routers.users       import router as users_router
 from app.middleware.logging_middleware     import LoggingMiddleware
 from app.middleware.maintenance_middleware import MaintenanceMiddleware
+from app.middleware.rate_limit_middleware  import RateLimitMiddleware
 from app.db.database import init_db
 from app import sync_engine
 from app import log_retention_scheduler
@@ -44,6 +45,7 @@ app = FastAPI(
 
 # ── Middleware ────────────────────────────────────────────────────────────────
 app.add_middleware(LoggingMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(MaintenanceMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -95,7 +97,7 @@ async def on_startup():
     logger.info("Presence heartbeat monitor started")
 
     sync_engine.start_scheduler()
-    logger.info("Sync engine scheduler started (interval=%ds)", sync_engine.SYNC_INTERVAL_SECONDS)
+    logger.info("Sync engine scheduler started")
 
     log_retention_scheduler.start_scheduler()
     logger.info("Log retention scheduler started")

@@ -6,7 +6,7 @@ sync_engine.py
 
   • Session แยกต่อ row — row-level isolation สมบูรณ์
   • Retry logic พร้อม exponential backoff
-  • Auto-scheduler (background task) ทุก SYNC_INTERVAL_SECONDS
+  • Auto-scheduler (background task) — ช่วงเวลาอ่านจาก rl_sync_interval ใน Settings
   • Manual trigger ผ่าน /api/sync/run
   • Status tracking ผ่าน /api/sync/status
   • Idempotent: ON CONFLICT DO UPDATE — รันซ้ำกี่ครั้งก็ได้
@@ -23,20 +23,44 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import AsyncSessionLocal
 from app.db.models import MappingRule, DatabaseRecord, DatatypeStandard
+from app.services import system_service
 
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-BATCH_SIZE            = 100
-MAX_RETRIES           = 3
-SYNC_INTERVAL_SECONDS = 30        # auto-sync ทุก 30 วินาที
-RETRY_BACKOFF_SECONDS = [0, 0, 0] # delay ก่อน retry แต่ละครั้ง
+BATCH_SIZE                 = 100
+DEFAULT_SYNC_INTERVAL_SEC  = 300   # 5 นาที — อ่านจาก rl_sync_interval ใน DB
+DEFAULT_MAX_RETRIES        = 3
+RETRY_BACKOFF_SECONDS      = [0, 0, 0]  # delay ก่อน retry แต่ละครั้ง
 
 # ── Runtime state ─────────────────────────────────────────────────────────────
 _sync_running          = False
 _last_run_at: Optional[datetime] = None
 _last_metrics: dict   = {}
 _scheduler_task: Optional[asyncio.Task] = None
+
+
+async def _get_sync_interval_seconds() -> int:
+    """อ่านช่วงเวลา auto-sync จาก system settings (rl_sync_interval, หน่วยวินาที)."""
+    try:
+        async with AsyncSessionLocal() as session:
+            settings = await system_service.get_settings(session)
+            raw = int(settings.get("rl_sync_interval", str(DEFAULT_SYNC_INTERVAL_SEC)))
+            return max(60, min(raw, 86400))  # 1–1440 นาที
+    except Exception as exc:
+        logger.warning("[sync] Failed to read sync interval: %s", exc)
+        return DEFAULT_SYNC_INTERVAL_SEC
+
+
+async def _get_max_retries() -> int:
+    try:
+        async with AsyncSessionLocal() as session:
+            settings = await system_service.get_settings(session)
+            raw = int(settings.get("rl_max_retry", str(DEFAULT_MAX_RETRIES)))
+            return max(0, min(raw, 10))
+    except Exception as exc:
+        logger.warning("[sync] Failed to read max retries: %s", exc)
+        return DEFAULT_MAX_RETRIES
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -96,7 +120,7 @@ async def _process_row(rule_id: int, rule_data: dict) -> dict:
                         (db_id, source_type, raw_type, logical_type, standard_id)
                     VALUES
                         (:db_id, :source_type, :raw_type, :logical_type, :standard_id)
-                    ON CONFLICT (db_id, raw_type, source_type)
+                    ON CONFLICT (db_id, raw_type)
                     DO UPDATE SET
                         source_type  = EXCLUDED.source_type,
                         logical_type = EXCLUDED.logical_type,
@@ -196,7 +220,8 @@ async def run_sync_cycle() -> dict:
     _sync_running = True
     metrics = {"processed": 0, "synced": 0, "errors": 0}
     cycle_start = datetime.now(timezone.utc)
-    logger.info("[sync] Cycle started")
+    max_retries = await _get_max_retries()
+    logger.info("[sync] Cycle started (max_retries=%d)", max_retries)
 
     try:
         # ดึง rows ที่ต้อง sync (read-only session แยก)
@@ -206,7 +231,7 @@ async def run_sync_cycle() -> dict:
                 .where(
                     (MappingRule.status == "pending") |
                     ((MappingRule.status == "active")  & (MappingRule.synced_at == None)) |
-                    ((MappingRule.status == "error")   & (MappingRule.retry_count < MAX_RETRIES))
+                    ((MappingRule.status == "error")   & (MappingRule.retry_count < max_retries))
                 )
                 .order_by(MappingRule.id)
                 .limit(BATCH_SIZE)
@@ -276,13 +301,15 @@ async def run_sync_cycle() -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _scheduler_loop():
-    logger.info("[sync] Scheduler started — interval=%ds", SYNC_INTERVAL_SECONDS)
+    logger.info("[sync] Scheduler started")
     while True:
+        interval = await _get_sync_interval_seconds()
+        logger.debug("[sync] Next cycle in %ds", interval)
         try:
             await run_sync_cycle()
         except Exception as e:
             logger.error("[sync] Scheduler error: %s", e)
-        await asyncio.sleep(SYNC_INTERVAL_SECONDS)
+        await asyncio.sleep(interval)
 
 
 def start_scheduler():
@@ -299,13 +326,15 @@ def stop_scheduler():
         logger.info("[sync] Scheduler task cancelled")
 
 
-def get_status() -> dict:
+async def get_status() -> dict:
+    interval = await _get_sync_interval_seconds()
     return {
-        "running":          _sync_running,
-        "last_run_at":      _last_run_at.isoformat() if _last_run_at else None,
-        "last_metrics":     _last_metrics,
-        "interval_seconds": SYNC_INTERVAL_SECONDS,
-        "scheduler_active": _scheduler_task is not None and not _scheduler_task.done(),
+        "running":           _sync_running,
+        "last_run_at":       _last_run_at.isoformat() if _last_run_at else None,
+        "last_metrics":      _last_metrics,
+        "interval_seconds":  interval,
+        "interval_minutes":  round(interval / 60, 1),
+        "scheduler_active":  _scheduler_task is not None and not _scheduler_task.done(),
     }
 
 

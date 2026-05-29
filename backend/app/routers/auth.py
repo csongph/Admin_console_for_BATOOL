@@ -19,15 +19,16 @@ class RefreshRequest(BaseModel):
     access_token: str
 
 
-async def _upsert_auth_session(db: AsyncSession, username: str) -> None:
+async def _upsert_auth_session(db: AsyncSession, username: str, ttl_minutes: int | None = None) -> None:
     session_id = f"auth-{username}"
     created = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    ttl = ttl_minutes if ttl_minutes is not None else settings.ACCESS_TOKEN_EXPIRE_MINUTES
     result = await db.execute(select(SessionRecord).where(SessionRecord.id == session_id))
     record = result.scalar_one_or_none()
 
     if record:
         record.created = created
-        record.ttl_minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+        record.ttl_minutes = ttl
         record.status_cache = "active"
     else:
         db.add(SessionRecord(
@@ -36,7 +37,7 @@ async def _upsert_auth_session(db: AsyncSession, username: str) -> None:
             role="admin" if username == settings.ADMIN_USERNAME else "user",
             db="admin-console",
             tables=0,
-            ttl_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+            ttl_minutes=ttl,
             created=created,
             status_cache="active",
         ))
@@ -45,14 +46,31 @@ async def _upsert_auth_session(db: AsyncSession, username: str) -> None:
 
 @router.post("/login", response_model=APIResponse)
 async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
+    locked, remain = auth_service.is_login_locked(request.username)
+    if locked:
+        mins = max(1, (remain + 59) // 60)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed attempts. Try again in {mins} minute(s).",
+        )
+
     ok = await auth_service.authenticate_user(request.username, request.password, db)
     if not ok:
+        _, now_locked = await auth_service.record_failed_login(request.username, db)
+        if now_locked:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed attempts. Account locked for 15 minutes.",
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
-    token_data = auth_service.generate_token(request.username)
-    await _upsert_auth_session(db, request.username)
+
+    auth_service.clear_login_lockout(request.username)
+    token_data = await auth_service.generate_token(request.username, db)
+    expire_min = token_data["expires_in"] // 60
+    await _upsert_auth_session(db, request.username, expire_min)
     await auth_service.update_last_login(request.username, db)
     return APIResponse(success=True, message="Login successful", data=token_data)
 
@@ -62,8 +80,9 @@ async def refresh_token(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    token_data = auth_service.generate_token(current_user["username"])
-    await _upsert_auth_session(db, current_user["username"])
+    token_data = await auth_service.generate_token(current_user["username"], db)
+    expire_min = token_data["expires_in"] // 60
+    await _upsert_auth_session(db, current_user["username"], expire_min)
     return APIResponse(success=True, message="Token refreshed", data=token_data)
 
 

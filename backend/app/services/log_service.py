@@ -80,6 +80,23 @@ async def get_new_logs() -> List[LogEntry]:
     return new_entries
 
 
+async def clear_display_logs() -> int:
+    """ล้าง batool_logs ใน DB และ reset poll cursor"""
+    global _last_seen_id
+    from sqlalchemy import delete, func
+    deleted = 0
+    try:
+        async with AsyncSessionLocal() as db:
+            count = await db.execute(select(func.count()).select_from(BatoolLog))
+            deleted = count.scalar_one() or 0
+            await db.execute(delete(BatoolLog))
+            await db.commit()
+    except Exception:
+        pass
+    _last_seen_id = 0
+    return deleted
+
+
 async def _fetch_raw() -> List[LogEntry]:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
