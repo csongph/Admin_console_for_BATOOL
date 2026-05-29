@@ -2519,31 +2519,34 @@ async function confirmClearActivity() {
 //  ADMIN LOGS PAGE (backend/system logs only)
 // ════════════════════════════════════════════════════════════
 
-let _alTab            = 'system';     // locked to system logs
+let _alTab            = 'batool';     // 'batool' | 'admin'
 let _alActivityData   = [];           // raw list จาก API
 let _alActivityPage   = 1;
 const AL_PAGE_SIZE    = 20;
 let _alSystemLogs     = [];           // raw log list
 let _alSystemFilter   = 'ALL';
+let _sysLogClearDays  = 0;
+let _sysLogRetDays    = 30;
+let _sysLogRetHours   = 24;
+let _sysLogRetention  = null;
 
 // ── Tab switch ────────────────────────────────────────────────────────────────
 
 function switchAdminLogTab(tab, btn) {
-  _alTab = 'system';
+  _alTab = tab === 'admin' ? 'admin' : 'batool';
   document.querySelectorAll('.adminlog-tab').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   const activityPanel = document.getElementById('adminlog-panel-activity');
   const systemPanel = document.getElementById('adminlog-panel-system');
   if (activityPanel) activityPanel.style.display = 'none';
   if (systemPanel) systemPanel.style.display = '';
-  if (!_alSystemLogs.length) _fetchAdminSystemLogs();
+  _fetchAdminSystemLogs();
 }
 
 // ── Main fetch ────────────────────────────────────────────────────────────────
 
 async function fetchAdminLogs() {
-  _alTab = 'system';
-  await _fetchAdminSystemLogs();
+  await Promise.all([_fetchAdminSystemLogs(), _loadSystemLogRetention()]);
 }
 
 // ── Activity Log ──────────────────────────────────────────────────────────────
@@ -2691,19 +2694,15 @@ async function openAdminLogDetail(id) {
 
 async function _fetchAdminSystemLogs() {
   try {
-    const data = await apiCall('/api/admin-logs');
+    const logType = _alTab === 'admin' ? 'admin' : 'batool';
+    const data = await apiCall(`/api/admin-logs?log_type=${logType}`);
     const payload = data?.data;
-    const list = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload?.logs)
-        ? payload.logs
-        : Array.isArray(payload?.items)
-          ? payload.items
-          : [];
-    _alSystemLogs = [...list].reverse(); // newest first
+    const list = Array.isArray(payload?.logs) ? payload.logs : [];
+    _alSystemLogs = [...list].reverse();
     filterAdminSystemLogs();
     const countEl = document.getElementById('alSystemCount');
-    if (countEl) countEl.textContent = `${_alSystemLogs.length} รายการ`;
+    const tabLabel = logType === 'admin' ? 'Admin Console' : 'BA Tool';
+    if (countEl) countEl.textContent = `${_alSystemLogs.length} รายการ (${tabLabel})`;
   } catch (e) {
     showToast('โหลด System Log ไม่สำเร็จ: ' + e.message, 'error');
   }
@@ -2725,10 +2724,11 @@ function filterAdminSystemLogs() {
     (_alSystemFilter === 'ALL' || (l.level || '').toUpperCase().startsWith(_alSystemFilter.toUpperCase())) &&
     (!search || (l.message || '').toLowerCase().includes(search) || (l.timestamp || l.created_at || '').includes(search))
   );
+  const tabLabel = _alTab === 'admin' ? 'Admin Console' : 'BA Tool';
   const countEl = document.getElementById('alSystemCount');
-  if (countEl) countEl.textContent = `${filtered.length} / ${_alSystemLogs.length} รายการ`;
+  if (countEl) countEl.textContent = `${filtered.length} / ${_alSystemLogs.length} รายการ (${tabLabel})`;
   if (!filtered.length) {
-    terminal.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text3)">ไม่พบ Log ที่ตรงเงื่อนไข</div>`;
+    terminal.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text3)">ไม่พบ Log ในตาราง ${tabLabel}</div>`;
     return;
   }
   filtered.slice(0, 300).forEach(l => {
@@ -2745,8 +2745,11 @@ function filterAdminSystemLogs() {
 // ── Export ────────────────────────────────────────────────────────────────────
 
 function exportAdminLogs() {
-  const lines = _alSystemLogs.map(l => `${l.timestamp || ''} [${l.level || 'INFO'}] ${l.message || ''}`).join('\n');
-  _downloadText(lines, 'backend_system_log.txt', 'text/plain');
+  const tabLabel = _alTab === 'admin' ? 'admin_console' : 'batool';
+  const lines = _alSystemLogs.map(l =>
+    `${l.created_at || l.timestamp || ''} [${l.level || 'INFO'}] ${l.message || ''}`
+  ).join('\n');
+  _downloadText(lines, `${tabLabel}_logs.txt`, 'text/plain');
 }
 
 function _downloadText(content, filename, mime) {
@@ -2758,8 +2761,123 @@ function _downloadText(content, filename, mime) {
   URL.revokeObjectURL(a.href);
 }
 
-// ── Clear Admin Activity Log ──────────────────────────────────────────────────
+// ── System Log retention & clear ─────────────────────────────────────────────
+
+async function _loadSystemLogRetention() {
+  const statusEl = document.getElementById('alRetentionStatus');
+  try {
+    const res = await apiCall('/api/admin-logs/retention');
+    _sysLogRetention = res.data || {};
+    if (statusEl) {
+      if (_sysLogRetention.enabled) {
+        statusEl.textContent = `เปิดอยู่ — เก็บ ${_sysLogRetention.retention_days} วัน, รันทุก ${_sysLogRetention.interval_hours} ชม.`;
+      } else {
+        statusEl.textContent = 'ปิดอยู่ — เปิดได้จากปุ่ม "ตั้งเวลาลบ Log"';
+      }
+    }
+  } catch (e) {
+    if (statusEl) statusEl.textContent = 'โหลด retention ไม่สำเร็จ';
+  }
+}
+
+function _renderRetentionModalFields() {
+  const r = _sysLogRetention || {};
+  const cb = document.getElementById('sysLogRetentionEnabled');
+  if (cb) cb.checked = !!r.enabled;
+  _sysLogRetDays  = r.retention_days  || 30;
+  _sysLogRetHours = r.interval_hours  || 24;
+  document.querySelectorAll('[data-ret-days]').forEach(b =>
+    b.classList.toggle('active', parseInt(b.dataset.retDays) === _sysLogRetDays));
+  document.querySelectorAll('[data-ret-hours]').forEach(b =>
+    b.classList.toggle('active', parseInt(b.dataset.retHours) === _sysLogRetHours));
+  const lastEl = document.getElementById('sysLogRetentionLastRun');
+  const nextEl = document.getElementById('sysLogRetentionNextRun');
+  if (lastEl) lastEl.textContent = r.last_run ? new Date(r.last_run).toLocaleString('th-TH') : '—';
+  if (nextEl) nextEl.textContent = r.next_run ? new Date(r.next_run).toLocaleString('th-TH') : '—';
+}
+
+function openSystemLogRetentionModal() {
+  _renderRetentionModalFields();
+  document.querySelectorAll('#sysLogRetentionDaysWrap [data-ret-days]').forEach(b => {
+    b.onclick = () => {
+      _sysLogRetDays = parseInt(b.dataset.retDays);
+      document.querySelectorAll('[data-ret-days]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+    };
+  });
+  document.querySelectorAll('#sysLogRetentionIntervalWrap [data-ret-hours]').forEach(b => {
+    b.onclick = () => {
+      _sysLogRetHours = parseInt(b.dataset.retHours);
+      document.querySelectorAll('[data-ret-hours]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+    };
+  });
+  document.getElementById('systemLogRetentionModal')?.classList.remove('hidden');
+}
+
+function closeSystemLogRetentionModal() {
+  document.getElementById('systemLogRetentionModal')?.classList.add('hidden');
+}
+
+async function saveSystemLogRetention() {
+  const enabled = document.getElementById('sysLogRetentionEnabled')?.checked || false;
+  try {
+    await apiCall('/api/admin-logs/retention', {
+      method: 'PUT',
+      body: JSON.stringify({
+        enabled,
+        retention_days: _sysLogRetDays,
+        interval_hours: _sysLogRetHours,
+      }),
+    });
+    showToast('บันทึกการตั้งเวลาลบ log แล้ว', 'success');
+    closeSystemLogRetentionModal();
+    await _loadSystemLogRetention();
+  } catch (e) {
+    showToast('บันทึกไม่สำเร็จ: ' + e.message, 'error');
+  }
+}
+
+function openClearSystemLogModal() {
+  _sysLogClearDays = 0;
+  const srcSel = document.getElementById('sysLogClearSource');
+  if (srcSel) srcSel.value = _alTab === 'admin' ? 'admin' : 'batool';
+  document.querySelectorAll('[data-sys-days]').forEach(b =>
+    b.classList.toggle('active', parseInt(b.dataset.sysDays) === 0));
+  const label = document.getElementById('sysLogClearLabel');
+  if (label) label.textContent = 'ทั้งหมด';
+  document.querySelectorAll('#sysLogClearDaysWrap [data-sys-days]').forEach(b => {
+    b.onclick = () => {
+      _sysLogClearDays = parseInt(b.dataset.sysDays);
+      document.querySelectorAll('[data-sys-days]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      if (label) label.textContent = _sysLogClearDays === 0 ? 'ทั้งหมด' : `เก่ากว่า ${_sysLogClearDays} วัน`;
+    };
+  });
+  document.getElementById('clearSystemLogModal')?.classList.remove('hidden');
+}
+
+function closeClearSystemLogModal() {
+  document.getElementById('clearSystemLogModal')?.classList.add('hidden');
+}
+
+async function confirmClearSystemLogs() {
+  const logType = document.getElementById('sysLogClearSource')?.value || 'all';
+  const label  = _sysLogClearDays === 0 ? 'ทั้งหมด' : `เก่ากว่า ${_sysLogClearDays} วัน`;
+  const tableLabel = { batool: 'batool_logs', admin: 'admin_console_logs', all: 'ทั้งสองตาราง' }[logType] || logType;
+  if (!confirm(`ยืนยันลบ log ${label} จาก ${tableLabel}?`)) return;
+  try {
+    let path = `/api/admin-logs/clear?days=${_sysLogClearDays}&log_type=${encodeURIComponent(logType)}`;
+    const res = await apiCall(path, { method: 'DELETE' });
+    const deleted = res.data?.deleted ?? 0;
+    showToast(`ลบ log สำเร็จ (${deleted} รายการ)`, 'success');
+    closeClearSystemLogModal();
+    await fetchAdminLogs();
+  } catch (e) {
+    showToast('ลบไม่สำเร็จ: ' + e.message, 'error');
+  }
+}
 
 async function clearAdminLogs() {
-  showToast('หน้านี้แสดงเฉพาะ Backend/System Log และยังไม่เปิดให้ลบจากหน้านี้', 'info');
+  openClearSystemLogModal();
 }

@@ -1,26 +1,21 @@
 """
 log_service.py
 ──────────────
-ดึง logs จาก BA_TOOL backend (external) แบบ dedup ด้วย last_seen_id
-เพื่อให้ polling ส่งเฉพาะ entries ใหม่เท่านั้น
+ดึง logs จาก BA Tool backend และ persist ลง batool_logs
 """
 
 import httpx
 from typing import List, Iterable
 from datetime import datetime, timezone
+from sqlalchemy import select
+
 from app.schemas.schemas import LogEntry
 from app.db.database import AsyncSessionLocal
-from app.db.models import SystemLog
+from app.db.models import BatoolLog
 
 BA_TOOL_URL = "https://ba-tool-backend.onrender.com"
 
-# เก็บ id สุดท้ายที่เคยส่งไปแล้ว — ป้องกัน append ซ้ำ
 _last_seen_id: int = 0
-_persisted_keys: set[str] = set()
-
-
-def _build_key(entry: LogEntry) -> str:
-    return f"{entry.id}|{entry.timestamp}|{entry.level}|{entry.message}"
 
 
 def _parse_created_at(ts: str) -> datetime:
@@ -33,18 +28,18 @@ def _parse_created_at(ts: str) -> datetime:
         return datetime.now(timezone.utc)
 
 
-async def _persist_to_system_logs(entries: Iterable[LogEntry]) -> None:
-    rows: list[SystemLog] = []
+async def _persist_to_batool_logs(entries: Iterable[LogEntry]) -> None:
+    rows: list[BatoolLog] = []
+    keys: list[str] = []
+
     for e in entries:
-        key = _build_key(e)
-        if key in _persisted_keys:
-            continue
-        _persisted_keys.add(key)
-        rows.append(SystemLog(
+        external_key = f"batool:{e.id}"
+        keys.append(external_key)
+        rows.append(BatoolLog(
             level=e.level.upper(),
-            source="batool-backend",
             message=e.message,
             detail=f"batool_id={e.id}; timestamp={e.timestamp}",
+            external_key=external_key,
             created_at=_parse_created_at(e.timestamp),
         ))
 
@@ -53,32 +48,34 @@ async def _persist_to_system_logs(entries: Iterable[LogEntry]) -> None:
 
     try:
         async with AsyncSessionLocal() as db:
-            db.add_all(rows)
+            existing = await db.execute(
+                select(BatoolLog.external_key).where(BatoolLog.external_key.in_(keys))
+            )
+            seen = {r for r in existing.scalars().all() if r}
+            for row in rows:
+                if row.external_key in seen:
+                    continue
+                db.add(row)
             await db.commit()
     except Exception:
-        # best-effort persistence: do not break log API flow
         return
 
 
 async def get_all_logs() -> List[LogEntry]:
-    """ดึง logs ทั้งหมด (ใช้สำหรับ initial load)"""
     global _last_seen_id
     entries = await _fetch_raw()
-    if _last_seen_id == 0 and entries:
-        await _persist_to_system_logs(entries)
     if entries:
+        await _persist_to_batool_logs(entries)
         _last_seen_id = max(e.id for e in entries)
     return entries
 
 
 async def get_new_logs() -> List[LogEntry]:
-    """ดึงเฉพาะ logs ที่ id > _last_seen_id (ใช้สำหรับ polling)"""
     global _last_seen_id
     all_entries = await _fetch_raw()
     new_entries = [e for e in all_entries if e.id > _last_seen_id]
     if new_entries:
-        await _persist_to_system_logs(new_entries)
-    if new_entries:
+        await _persist_to_batool_logs(new_entries)
         _last_seen_id = max(e.id for e in new_entries)
     return new_entries
 

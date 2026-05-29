@@ -6,7 +6,7 @@ from starlette.requests import Request
 from datetime import datetime, timezone
 
 from app.db.database import AsyncSessionLocal
-from app.db.models import SystemLog
+from app.db.models import AdminConsoleLog
 
 logger = logging.getLogger(__name__)
 _RECENT_REQUEST_LOGS = deque(maxlen=500)
@@ -43,19 +43,20 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 message = f"{request.method} {path} -> {response.status_code} ({duration_ms:.1f}ms)"
                 detail = f"client={request.client.host if request.client else '-'} query={request.url.query or '-'}"
                 created_at = datetime.now(timezone.utc)
+                external_key = f"admin:{request.method}:{path}:{int(created_at.timestamp() * 1000)}"
                 _RECENT_REQUEST_LOGS.append({
                     "level": level,
-                    "source": "admin-backend",
+                    "source": "admin-console",
                     "message": message,
                     "detail": detail,
                     "created_at": created_at.isoformat(),
                 })
                 async with AsyncSessionLocal() as db:
-                    db.add(SystemLog(
+                    db.add(AdminConsoleLog(
                         level=level,
-                        source="admin-backend",
                         message=message,
                         detail=detail,
+                        external_key=external_key,
                         created_at=created_at,
                     ))
                     await db.commit()

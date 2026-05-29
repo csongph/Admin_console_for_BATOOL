@@ -216,21 +216,21 @@ class AdminUser(Base):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-class SystemLog(Base):
-    """Log ระบบของ Admin Console — เก็บ event จาก auth, sync, mapping ฯลฯ"""
-    __tablename__ = "system_logs"
+class BatoolLog(Base):
+    """Log จาก BA Tool backend"""
+    __tablename__ = "batool_logs"
     __table_args__ = (
-        Index("ix_syslog_level",      "level"),
-        Index("ix_syslog_source",     "source"),
-        Index("ix_syslog_created_at", "created_at"),
+        Index("ix_batool_log_level",      "level"),
+        Index("ix_batool_log_created_at", "created_at"),
+        Index("ix_batool_log_external_key", "external_key", unique=True),
     )
 
-    id:         Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
-    level:      Mapped[str]           = mapped_column(String(16),  default="INFO",   nullable=False)
-    source:     Mapped[str]           = mapped_column(String(64),  default="system", nullable=False)
-    message:    Mapped[str]           = mapped_column(Text,         default="",       nullable=False)
-    detail:     Mapped[Optional[str]] = mapped_column(Text,         nullable=True)
-    created_at: Mapped[datetime]      = mapped_column(
+    id:           Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
+    level:        Mapped[str]           = mapped_column(String(16), default="INFO", nullable=False)
+    message:      Mapped[str]           = mapped_column(Text, default="", nullable=False)
+    detail:       Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    external_key: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, default=None)
+    created_at:   Mapped[datetime]      = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
@@ -240,7 +240,39 @@ class SystemLog(Base):
         return {
             "id":         self.id,
             "level":      self.level,
-            "source":     self.source,
+            "source":     "batool-backend",
+            "message":    self.message,
+            "detail":     self.detail,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+class AdminConsoleLog(Base):
+    """Log จาก Admin Console backend (request / system events)"""
+    __tablename__ = "admin_console_logs"
+    __table_args__ = (
+        Index("ix_admin_log_level",      "level"),
+        Index("ix_admin_log_created_at", "created_at"),
+        Index("ix_admin_log_external_key", "external_key", unique=True),
+    )
+
+    id:           Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
+    level:        Mapped[str]           = mapped_column(String(16), default="INFO", nullable=False)
+    message:      Mapped[str]           = mapped_column(Text, default="", nullable=False)
+    detail:       Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    external_key: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, default=None)
+    created_at:   Mapped[datetime]      = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id":         self.id,
+            "level":      self.level,
+            "source":     "admin-console",
             "message":    self.message,
             "detail":     self.detail,
             "created_at": self.created_at.isoformat() if self.created_at else None,

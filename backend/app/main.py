@@ -15,6 +15,7 @@ from app.middleware.logging_middleware     import LoggingMiddleware
 from app.middleware.maintenance_middleware import MaintenanceMiddleware
 from app.db.database import init_db
 from app import sync_engine
+from app import log_retention_scheduler
 
 admin_logs_router = None
 for module_name in ("app.routers.admin_logs", "app.routers.adminlogs", "app.routers.admin_log"):
@@ -96,11 +97,17 @@ async def on_startup():
     sync_engine.start_scheduler()
     logger.info("Sync engine scheduler started (interval=%ds)", sync_engine.SYNC_INTERVAL_SECONDS)
 
+    log_retention_scheduler.start_scheduler()
+    logger.info("Log retention scheduler started")
+
 
 @app.on_event("shutdown")
 async def on_shutdown():
     sync_engine.stop_scheduler()
     logger.info("Sync engine scheduler stopped")
+
+    log_retention_scheduler.stop_scheduler()
+    logger.info("Log retention scheduler stopped")
 
 
 @app.exception_handler(Exception)

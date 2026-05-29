@@ -920,17 +920,25 @@
       <div class="page-header">
         <div>
           <h1 class="page-title">Admin Logs</h1>
-          <p class="page-desc">Backend Log ฝั่งแอดมินของ BA Tool</p>
+          <p class="page-desc">Log แยกตาราง — BA Tool (`batool_logs`) และ Admin Console (`admin_console_logs`)</p>
         </div>
         <div class="page-actions">
+          <button class="btn btn-ghost" onclick="openSystemLogRetentionModal()">⏰ ตั้งเวลาลบ Log</button>
+          <button class="btn btn-ghost" onclick="openClearSystemLogModal()">🗑 ลบ Log</button>
           <button class="btn btn-ghost" onclick="exportAdminLogs()">⬇ Export</button>
           <button class="btn btn-secondary" onclick="fetchAdminLogs()">↺ รีเฟรช</button>
         </div>
       </div>
 
+      <div class="table-card" style="margin-bottom:12px;padding:12px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+        <span style="font-size:12px;color:var(--text3)">Retention:</span>
+        <span id="alRetentionStatus" style="font-size:12px;color:var(--text2)">กำลังโหลด…</span>
+      </div>
+
       <!-- Backend log only -->
       <div class="adminlog-tabs">
-        <button class="adminlog-tab active" id="tabSystemLog" onclick="switchAdminLogTab('system', this)">🖥 Backend/System Log</button>
+        <button class="adminlog-tab active" id="tabBatoolLog" onclick="switchAdminLogTab('batool', this)">🛠 BA Tool Log</button>
+        <button class="adminlog-tab" id="tabAdminConsoleLog" onclick="switchAdminLogTab('admin', this)">🖥 Admin Console Log</button>
       </div>
 
       <!-- ── ACTIVITY LOG TAB ───────────────────────────── -->
@@ -1004,9 +1012,88 @@
             <span class="search-icon">⌕</span>
             <input type="text" placeholder="ค้นหา log…" class="search-input" id="alSystemSearch" oninput="filterAdminSystemLogs()" />
           </div>
+          <select class="filter-select" id="alSystemSource" onchange="filterAdminSystemLogs()" style="width:160px;display:none">
+            <option value="">ทุก Source</option>
+          </select>
           <div style="margin-left:auto;font-size:12px;color:var(--text3)" id="alSystemCount"></div>
         </div>
         <div class="log-terminal" id="alSystemTerminal" style="min-height:400px"></div>
+      </div>
+    </div>
+
+    <!-- Clear System Log Modal -->
+    <div class="modal-overlay hidden" id="clearSystemLogModal" onclick="if(event.target===this)closeClearSystemLogModal()">
+      <div class="modal" style="max-width:440px">
+        <div class="modal-header">
+          <div class="modal-title">🗑 เคลียร์ System Log</div>
+          <button class="modal-close" onclick="closeClearSystemLogModal()">✕</button>
+        </div>
+        <div class="modal-body" style="padding:20px 24px;display:flex;flex-direction:column;gap:16px">
+          <div>
+            <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Source</div>
+            <select class="filter-select" id="sysLogClearSource" style="width:100%">
+              <option value="batool">BA Tool (`batool_logs`)</option>
+              <option value="admin">Admin Console (`admin_console_logs`)</option>
+              <option value="all">ทั้งสองตาราง</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">เคลียร์ข้อมูลที่เก่ากว่า</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap" id="sysLogClearDaysWrap">
+              <button class="clear-day-btn" data-sys-days="7">7 วัน</button>
+              <button class="clear-day-btn" data-sys-days="30">30 วัน</button>
+              <button class="clear-day-btn active" data-sys-days="0">ทั้งหมด</button>
+            </div>
+            <div style="margin-top:12px;padding:10px 12px;background:rgba(255,77,109,.06);border:1px solid rgba(255,77,109,.15);border-radius:var(--radius);font-size:12px;color:var(--text2)">
+              จะลบ log <strong id="sysLogClearLabel">ทั้งหมด</strong>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid var(--border)">
+          <button class="btn btn-secondary" onclick="closeClearSystemLogModal()">ยกเลิก</button>
+          <button class="btn btn-danger" onclick="confirmClearSystemLogs()">ยืนยันเคลียร์</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- System Log Retention Modal -->
+    <div class="modal-overlay hidden" id="systemLogRetentionModal" onclick="if(event.target===this)closeSystemLogRetentionModal()">
+      <div class="modal" style="max-width:460px">
+        <div class="modal-header">
+          <div class="modal-title">⏰ ตั้งเวลาลบ Log อัตโนมัติ</div>
+          <button class="modal-close" onclick="closeSystemLogRetentionModal()">✕</button>
+        </div>
+        <div class="modal-body" style="padding:20px 24px;display:flex;flex-direction:column;gap:16px">
+          <label class="login-remember" style="margin:0">
+            <input type="checkbox" id="sysLogRetentionEnabled" />
+            เปิดใช้งานลบ log อัตโนมัติ (ทั้ง batool_logs และ admin_console_logs)
+          </label>
+          <div>
+            <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">เก็บ log ไว้</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap" id="sysLogRetentionDaysWrap">
+              <button class="clear-day-btn" data-ret-days="7">7 วัน</button>
+              <button class="clear-day-btn active" data-ret-days="30">30 วัน</button>
+              <button class="clear-day-btn" data-ret-days="60">60 วัน</button>
+              <button class="clear-day-btn" data-ret-days="90">90 วัน</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">รันทุก</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap" id="sysLogRetentionIntervalWrap">
+              <button class="clear-day-btn active" data-ret-hours="24">24 ชม.</button>
+              <button class="clear-day-btn" data-ret-hours="12">12 ชม.</button>
+              <button class="clear-day-btn" data-ret-hours="6">6 ชม.</button>
+            </div>
+          </div>
+          <div id="sysLogRetentionStatus" style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);font-size:12px;color:var(--text2)">
+            ครั้งล่าสุด: <strong id="sysLogRetentionLastRun">—</strong><br>
+            ครั้งถัดไป: <strong id="sysLogRetentionNextRun">—</strong>
+          </div>
+        </div>
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid var(--border)">
+          <button class="btn btn-secondary" onclick="closeSystemLogRetentionModal()">ยกเลิก</button>
+          <button class="btn btn-primary" onclick="saveSystemLogRetention()">บันทึก</button>
+        </div>
       </div>
     </div>
 

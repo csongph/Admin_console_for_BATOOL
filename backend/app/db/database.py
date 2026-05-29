@@ -96,3 +96,77 @@ async def init_db():
         await conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_syslog_created_at ON system_logs (created_at DESC)"
         ))
+        await conn.execute(text(
+            "ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS external_key VARCHAR(256) DEFAULT NULL"
+        ))
+        await conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_syslog_external_key "
+            "ON system_logs (external_key) WHERE external_key IS NOT NULL"
+        ))
+
+        # ── Migration 008: แยก log เป็น batool_logs + admin_console_logs ───────
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS batool_logs (
+                id           SERIAL       PRIMARY KEY,
+                level        VARCHAR(16)  NOT NULL DEFAULT 'INFO',
+                message      TEXT         NOT NULL DEFAULT '',
+                detail       TEXT,
+                external_key VARCHAR(256),
+                created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_batool_log_level ON batool_logs (level)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_batool_log_created_at ON batool_logs (created_at DESC)"
+        ))
+        await conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_batool_log_external_key "
+            "ON batool_logs (external_key) WHERE external_key IS NOT NULL"
+        ))
+
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS admin_console_logs (
+                id           SERIAL       PRIMARY KEY,
+                level        VARCHAR(16)  NOT NULL DEFAULT 'INFO',
+                message      TEXT         NOT NULL DEFAULT '',
+                detail       TEXT,
+                external_key VARCHAR(256),
+                created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_admin_log_level ON admin_console_logs (level)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_admin_log_created_at ON admin_console_logs (created_at DESC)"
+        ))
+        await conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_admin_log_external_key "
+            "ON admin_console_logs (external_key) WHERE external_key IS NOT NULL"
+        ))
+
+        # ย้ายข้อมูลเก่าจาก system_logs (ครั้งเดียว)
+        await conn.execute(text("""
+            INSERT INTO batool_logs (level, message, detail, external_key, created_at)
+            SELECT level, message, detail, external_key, created_at
+            FROM system_logs
+            WHERE source = 'batool-backend'
+              AND NOT EXISTS (
+                SELECT 1 FROM batool_logs b
+                WHERE b.external_key IS NOT NULL
+                  AND b.external_key = system_logs.external_key
+              )
+        """))
+        await conn.execute(text("""
+            INSERT INTO admin_console_logs (level, message, detail, external_key, created_at)
+            SELECT level, message, detail, external_key, created_at
+            FROM system_logs
+            WHERE source IN ('admin-console', 'admin-backend')
+              AND NOT EXISTS (
+                SELECT 1 FROM admin_console_logs a
+                WHERE a.external_key IS NOT NULL
+                  AND a.external_key = system_logs.external_key
+              )
+        """))
