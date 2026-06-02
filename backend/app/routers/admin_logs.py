@@ -101,6 +101,21 @@ def _scope_from_query(log_type: Optional[str]) -> str:
     return log_retention_service._normalize_scope(log_type)
 
 
+def _with_operator(rows: list[dict]) -> list[dict]:
+    for row in rows:
+        operator = (
+            row.get("operator")
+            or row.get("username")
+            or row.get("user")
+            or row.get("actor")
+            or row.get("created_by")
+            or row.get("uploaded_by")
+            or row.get("converted_by")
+        )
+        row["operator"] = operator or None
+    return rows
+
+
 async def _fetch_batool_logs(db: AsyncSession, level: Optional[str], limit: int, offset: int):
     q = select(BatoolLog).order_by(desc(BatoolLog.created_at))
     if level:
@@ -108,7 +123,7 @@ async def _fetch_batool_logs(db: AsyncSession, level: Optional[str], limit: int,
     count_q = select(func.count()).select_from(q.subquery())
     total = (await db.execute(count_q)).scalar_one()
     rows = (await db.execute(q.limit(limit).offset(offset))).scalars().all()
-    return total, [r.to_dict() for r in rows]
+    return total, _with_operator([r.to_dict() for r in rows])
 
 
 async def _fetch_admin_logs(db: AsyncSession, level: Optional[str], limit: int, offset: int):
@@ -118,7 +133,7 @@ async def _fetch_admin_logs(db: AsyncSession, level: Optional[str], limit: int, 
     count_q = select(func.count()).select_from(q.subquery())
     total = (await db.execute(count_q)).scalar_one()
     rows = (await db.execute(q.limit(limit).offset(offset))).scalars().all()
-    return total, [r.to_dict() for r in rows]
+    return total, _with_operator([r.to_dict() for r in rows])
 
 
 @router.get("/admin-logs/retention", response_model=APIResponse)
@@ -222,7 +237,7 @@ async def get_admin_logs(
         total, logs = await _fetch_admin_logs(db, level, limit, offset)
         if not logs:
             memory = list(reversed(get_recent_request_logs(limit=limit)))
-            logs = memory
+            logs = _with_operator(memory)
             total = len(logs)
     else:
         batool_total, batool_rows = await _fetch_batool_logs(db, level, limit + offset, 0)
@@ -232,7 +247,7 @@ async def get_admin_logs(
             key=lambda x: x.get("created_at") or "",
             reverse=True,
         )
-        logs = merged[offset: offset + limit]
+        logs = _with_operator(merged[offset: offset + limit])
         total = batool_total + admin_total
 
     return APIResponse(

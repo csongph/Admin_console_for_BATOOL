@@ -21,6 +21,10 @@ _last_seen_id: int = 0
 
 # pattern: "module_name - INFO - [filename.py:42] - message"
 _SOURCE_FILE_RE = re.compile(r"\[([^\]]+\.py:\d+)\]")
+_USERNAME_IN_MESSAGE_RE = re.compile(
+    r"\b(?:username|user|actor|created_by|uploaded_by|converted_by|operator|email)=([^\s,;]+)",
+    re.IGNORECASE,
+)
 
 
 async def _load_last_seen_id() -> int:
@@ -83,10 +87,26 @@ def _extract_source_file(entry_dict: dict, message: str) -> Optional[str]:
 
 def _extract_username(entry_dict: dict) -> Optional[str]:
     """ดึง username จาก log entry ถ้ามี"""
-    for key in ("username", "user", "actor"):
+    for key in (
+        "username",
+        "user",
+        "actor",
+        "created_by",
+        "uploaded_by",
+        "converted_by",
+        "operator",
+        "email",
+        "user_email",
+        "display_name",
+    ):
         val = entry_dict.get(key)
         if val and isinstance(val, str):
             return val
+    message = entry_dict.get("message") or entry_dict.get("msg") or ""
+    if isinstance(message, str):
+        match = _USERNAME_IN_MESSAGE_RE.search(message)
+        if match:
+            return match.group(1)
     return None
 
 

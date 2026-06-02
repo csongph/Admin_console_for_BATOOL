@@ -2823,7 +2823,11 @@ function filterAdminSystemLogs() {
   terminal.innerHTML = '';
   const filtered = _alSystemLogs.filter(l =>
     (_alSystemFilter === 'ALL' || (l.level || '').toUpperCase().startsWith(_alSystemFilter.toUpperCase())) &&
-    (!search || (l.message || '').toLowerCase().includes(search) || (l.timestamp || l.created_at || '').includes(search))
+    (!search ||
+      (l.message || '').toLowerCase().includes(search) ||
+      (l.operator || '').toLowerCase().includes(search) ||
+      (l.username || '').toLowerCase().includes(search) ||
+      (l.timestamp || l.created_at || '').includes(search))
   );
   const tabLabel = _alTab === 'admin' ? 'Admin Console' : 'BA Tool';
   const countEl = document.getElementById('alSystemCount');
@@ -2839,9 +2843,13 @@ function filterAdminSystemLogs() {
     const fileBadge = sf
       ? `<span class="log-file" title="${sf}">${_shortSourceFile(sf)}</span>`
       : '';
+    const actor = l.operator || l.username || l.user || l.actor || l.converted_by || l.uploaded_by || null;
+    const actorBadge = actor
+      ? `<span class="log-file" title="ผู้ใช้งาน: ${escapeAttr(actor)}">User: ${escapeAttr(actor)}</span>`
+      : '';
     const line = document.createElement('div');
     line.className = 'log-line';
-    line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-lvl ${lvl.toLowerCase()}">${lvl}</span>${fileBadge}<span class="log-msg">${l.message || ''}</span>`;
+    line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-lvl ${lvl.toLowerCase()}">${lvl}</span>${actorBadge}${fileBadge}<span class="log-msg">${escapeAttr(l.message || '')}</span>`;
     terminal.appendChild(line);
   });
   terminal.scrollTop = 0;
@@ -2853,7 +2861,9 @@ function exportAdminLogs() {
   const tabLabel = _alTab === 'admin' ? 'admin_console' : 'batool';
   const lines = _alSystemLogs.map(l => {
     const sf = l.source_file ? ` [${l.source_file}]` : '';
-    return `${l.created_at || l.timestamp || ''} [${l.level || 'INFO'}]${sf} ${l.message || ''}`;
+    const actor = l.operator || l.username || l.user || l.actor || l.converted_by || l.uploaded_by;
+    const by = actor ? ` user=${actor}` : '';
+    return `${l.created_at || l.timestamp || ''} [${l.level || 'INFO'}]${by}${sf} ${l.message || ''}`;
   }).join('\n');
   _downloadText(lines, `${tabLabel}_logs.txt`, 'text/plain');
 }
