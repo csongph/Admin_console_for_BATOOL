@@ -2,10 +2,12 @@
 log_service.py
 ──────────────
 ดึง logs จาก BA Tool backend และ persist ลง batool_logs
+รองรับ source_file field เพื่อ track ว่า log มาจากไฟล์ใด
 """
 
+import re
 import httpx
-from typing import List, Iterable
+from typing import List, Iterable, Optional
 from datetime import datetime, timezone
 from sqlalchemy import select
 
@@ -16,6 +18,9 @@ from app.db.models import BatoolLog
 BA_TOOL_URL = "https://ba-tool-backend.onrender.com"
 
 _last_seen_id: int = 0
+
+# pattern: "module_name - INFO - [filename.py:42] - message"
+_SOURCE_FILE_RE = re.compile(r"\[([^\]]+\.py:\d+)\]")
 
 
 def _parse_created_at(ts: str) -> datetime:
@@ -28,19 +33,54 @@ def _parse_created_at(ts: str) -> datetime:
         return datetime.now(timezone.utc)
 
 
-async def _persist_to_batool_logs(entries: Iterable[LogEntry]) -> None:
+def _extract_source_file(entry_dict: dict, message: str) -> Optional[str]:
+    """
+    พยายาม detect source_file จากหลาย source:
+    1. field 'source_file' หรือ 'file' ที่ BaTool ส่งมาตรง ๆ
+    2. field 'logger' หรือ 'module' (ชื่อ logger มักเป็น module path)
+    3. parse จาก message string ถ้า format เป็น '[file.py:N]'
+    """
+    # 1. field โดยตรง
+    for key in ("source_file", "file", "filename"):
+        val = entry_dict.get(key)
+        if val and isinstance(val, str):
+            return val
+
+    # 2. logger name → module path  (เช่น "app.routers.mappings")
+    logger_name = entry_dict.get("logger") or entry_dict.get("name") or entry_dict.get("module")
+    if logger_name and isinstance(logger_name, str) and "." in logger_name:
+        # "app.routers.mappings" → "routers/mappings.py"
+        parts = logger_name.split(".")
+        if parts[0] == "app":
+            parts = parts[1:]
+        return "/".join(parts) + ".py"
+
+    # 3. parse จาก message  "[routers/mappings.py:164]"
+    m = _SOURCE_FILE_RE.search(message or "")
+    if m:
+        return m.group(1)
+
+    return None
+
+
+async def _persist_to_batool_logs(entries: Iterable[LogEntry], raw_dicts: List[dict]) -> None:
     rows: list[BatoolLog] = []
     keys: list[str] = []
+
+    raw_map = {d.get("id", i): d for i, d in enumerate(raw_dicts)}
 
     for e in entries:
         external_key = f"batool:{e.id}"
         keys.append(external_key)
+        raw = raw_map.get(e.id, {})
+        source_file = _extract_source_file(raw, e.message)
         rows.append(BatoolLog(
-            level=e.level.upper(),
-            message=e.message,
-            detail=f"batool_id={e.id}; timestamp={e.timestamp}",
-            external_key=external_key,
-            created_at=_parse_created_at(e.timestamp),
+            level        = e.level.upper(),
+            message      = e.message,
+            detail       = f"batool_id={e.id}; timestamp={e.timestamp}",
+            source_file  = source_file,
+            external_key = external_key,
+            created_at   = _parse_created_at(e.timestamp),
         ))
 
     if not rows:
@@ -63,19 +103,19 @@ async def _persist_to_batool_logs(entries: Iterable[LogEntry]) -> None:
 
 async def get_all_logs() -> List[LogEntry]:
     global _last_seen_id
-    entries = await _fetch_raw()
+    entries, raw_dicts = await _fetch_raw()
     if entries:
-        await _persist_to_batool_logs(entries)
+        await _persist_to_batool_logs(entries, raw_dicts)
         _last_seen_id = max(e.id for e in entries)
     return entries
 
 
 async def get_new_logs() -> List[LogEntry]:
     global _last_seen_id
-    all_entries = await _fetch_raw()
+    all_entries, raw_dicts = await _fetch_raw()
     new_entries = [e for e in all_entries if e.id > _last_seen_id]
     if new_entries:
-        await _persist_to_batool_logs(new_entries)
+        await _persist_to_batool_logs(new_entries, raw_dicts)
         _last_seen_id = max(e.id for e in new_entries)
     return new_entries
 
@@ -97,14 +137,14 @@ async def clear_display_logs() -> int:
     return deleted
 
 
-async def _fetch_raw() -> List[LogEntry]:
+async def _fetch_raw() -> tuple[List[LogEntry], List[dict]]:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             res = await client.get(f"{BA_TOOL_URL}/logs")
             res.raise_for_status()
             data = res.json()
     except Exception:
-        return []
+        return [], []
 
     raw_list: list = []
     if isinstance(data, list):
@@ -115,7 +155,7 @@ async def _fetch_raw() -> List[LogEntry]:
     logs: List[LogEntry] = []
     for i, entry in enumerate(raw_list):
         if isinstance(entry, str):
-            parts = entry.split("]", 1)
+            parts   = entry.split("]", 1)
             if len(parts) == 2:
                 ts_part = parts[0].replace("[", "").strip()
                 rest    = parts[1].strip()
@@ -127,9 +167,10 @@ async def _fetch_raw() -> List[LogEntry]:
             logs.append(LogEntry(id=i + 1, timestamp=ts_part, level=level.upper(), message=message))
         elif isinstance(entry, dict):
             logs.append(LogEntry(
-                id=entry.get("id", i + 1),
-                timestamp=entry.get("timestamp", entry.get("created_at", "")),
-                level=str(entry.get("level", "INFO")).upper(),
-                message=entry.get("message", entry.get("msg", str(entry))),
+                id        = entry.get("id", i + 1),
+                timestamp = entry.get("timestamp", entry.get("created_at", "")),
+                level     = str(entry.get("level", "INFO")).upper(),
+                message   = entry.get("message", entry.get("msg", str(entry))),
             ))
-    return logs
+
+    return logs, [e if isinstance(e, dict) else {} for e in raw_list]

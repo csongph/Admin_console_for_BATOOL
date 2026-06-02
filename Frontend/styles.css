@@ -1150,6 +1150,18 @@ body {
 .log-lvl.warn  { color: #f5a623; background: rgba(245,166,35,.1); }
 .log-lvl.error { color: #ff4d6d; background: rgba(255,77,109,.1); }
 .log-lvl.debug { color: #7a84a0; background: rgba(122,132,160,.1); }
+.log-file {
+  font-size: 9px; font-weight: 600; font-family: var(--mono);
+  padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
+  color: #5b7fc4; background: rgba(91,127,196,.12);
+  border: 1px solid rgba(91,127,196,.2);
+  letter-spacing: .03em; cursor: default;
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+[data-theme="light"] .log-file {
+  color: #2f5bbf; background: rgba(47,91,191,.08);
+  border-color: rgba(47,91,191,.18);
+}
 .log-msg { font-size: 11px; color: #9aa3be; line-height: 1.6; word-break: break-all; }
 
 /* ── Settings ──────────────────────────────────── */

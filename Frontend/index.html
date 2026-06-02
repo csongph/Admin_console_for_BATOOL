@@ -417,10 +417,6 @@
       <span>Session Monitor</span>
       <span class="nav-badge live">0</span>
     </a>
-    <a class="nav-item" data-page="logs" href="#">
-      <i class="nav-icon">≡</i>
-      <span>Log Viewer</span>
-    </a>
     <a class="nav-item" data-page="activity" href="#">
       <i class="nav-icon">⟳</i>
       <span>Update Activity</span>
@@ -589,7 +585,7 @@
         <div class="card">
           <div class="card-header">
             <div class="card-title">Recent Activity</div>
-            <button class="btn btn-ghost btn-sm" onclick="navigate('logs')">View logs →</button>
+            <button class="btn btn-ghost btn-sm" onclick="navigate('adminlogs')">View logs →</button>
           </div>
           <div class="activity-feed" id="activityFeed">
              <div style="text-align: center; padding: 20px; color: var(--text3);">No recent activity</div>
@@ -745,35 +741,6 @@
       </div>
     </div>
 
-    <div class="page hidden" id="page-logs">
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">Log Viewer</h1>
-          <p class="page-desc">Real-time backend processing logs</p>
-        </div>
-        <div class="page-actions">
-          <button class="btn btn-ghost" onclick="clearLogs()">⊘ Clear</button>
-          <button class="btn btn-ghost" id="autoScrollBtn" onclick="toggleAutoScroll()">↓ Auto-scroll</button>
-        </div>
-      </div>
-
-      <div class="log-toolbar">
-        <div class="log-filter-group">
-          <button class="log-filter-btn active" data-level="ALL" onclick="setLogFilter('ALL', this)">All</button>
-          <button class="log-filter-btn info" data-level="INFO" onclick="setLogFilter('INFO', this)">INFO</button>
-          <button class="log-filter-btn warn" data-level="WARN" onclick="setLogFilter('WARN', this)">WARN</button>
-          <button class="log-filter-btn error" data-level="ERROR" onclick="setLogFilter('ERROR', this)">ERROR</button>
-          <button class="log-filter-btn debug" data-level="DEBUG" onclick="setLogFilter('DEBUG', this)">DEBUG</button>
-        </div>
-        <div class="filter-search" style="max-width:320px">
-          <span class="search-icon">⌕</span>
-          <input type="text" placeholder="Search logs..." class="search-input" id="logSearch" oninput="filterLogs()" />
-        </div>
-      </div>
-
-      <div class="log-terminal" id="logTerminal"></div>
-    </div>
-
     <!-- ══════════════════════════════════════════════════ UPDATE ACTIVITY PAGE ══ -->
     <div class="page hidden" id="page-activity">
       <div class="page-header">
@@ -925,9 +892,9 @@
           <p class="page-desc">Log แยกตาราง — BA Tool (`batool_logs`) และ Admin Console (`admin_console_logs`)</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-ghost" onclick="openSystemLogRetentionModal()">⏰ ตั้งเวลาลบ Log</button>
-          <button class="btn btn-ghost" onclick="openClearSystemLogModal()">🗑 ลบ Log</button>
-          <button class="btn btn-ghost" onclick="exportAdminLogs()">⬇ Export</button>
+          <button class="btn btn-ghost" id="btnSystemLogRetention" onclick="openSystemLogRetentionModal()">⏰ ตั้งเวลาลบ Log</button>
+          <button class="btn btn-ghost" id="btnClearLog" onclick="_adminLogClearOrClear()">🗑 ลบ Log</button>
+          <button class="btn btn-ghost" id="btnExportLog" onclick="exportAdminLogs()">⬇ Export</button>
           <button class="btn btn-secondary" onclick="fetchAdminLogs()">↺ รีเฟรช</button>
         </div>
       </div>
@@ -937,10 +904,11 @@
         <span id="alRetentionStatus" style="font-size:12px;color:var(--text2)">กำลังโหลด…</span>
       </div>
 
-      <!-- Backend log only -->
+      <!-- Tabs -->
       <div class="adminlog-tabs">
         <button class="adminlog-tab active" id="tabBatoolLog" onclick="switchAdminLogTab('batool', this)">🛠 BA Tool Log</button>
         <button class="adminlog-tab" id="tabAdminConsoleLog" onclick="switchAdminLogTab('admin', this)">🖥 Admin Console Log</button>
+        <button class="adminlog-tab" id="tabRealtimeLog" onclick="switchAdminLogTab('realtime', this)">⚡ Real-time Log</button>
       </div>
 
       <!-- ── ACTIVITY LOG TAB ───────────────────────────── -->
@@ -1020,6 +988,28 @@
           <div style="margin-left:auto;font-size:12px;color:var(--text3)" id="alSystemCount"></div>
         </div>
         <div class="log-terminal" id="alSystemTerminal" style="min-height:400px"></div>
+      </div>
+
+      <!-- ── REAL-TIME LOG TAB ──────────────────────────── -->
+      <div id="adminlog-panel-realtime" style="display:none">
+        <div class="log-toolbar" style="margin-bottom:12px">
+          <div class="log-filter-group">
+            <button class="log-filter-btn active" data-level="ALL" onclick="setLogFilter('ALL',this)">All</button>
+            <button class="log-filter-btn info"   data-level="INFO"  onclick="setLogFilter('INFO',this)">INFO</button>
+            <button class="log-filter-btn warn"   data-level="WARN"  onclick="setLogFilter('WARN',this)">WARN</button>
+            <button class="log-filter-btn error"  data-level="ERROR" onclick="setLogFilter('ERROR',this)">ERROR</button>
+            <button class="log-filter-btn debug"  data-level="DEBUG" onclick="setLogFilter('DEBUG',this)">DEBUG</button>
+          </div>
+          <div class="filter-search" style="max-width:280px">
+            <span class="search-icon">⌕</span>
+            <input type="text" placeholder="Search logs…" class="search-input" id="logSearch" oninput="filterLogs()" />
+          </div>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" id="autoScrollBtn" onclick="toggleAutoScroll()">↓ Auto-scroll</button>
+            <button class="btn btn-ghost btn-sm" onclick="clearLogs()">⊘ Clear</button>
+          </div>
+        </div>
+        <div class="log-terminal" id="logTerminal" style="min-height:400px"></div>
       </div>
     </div>
 

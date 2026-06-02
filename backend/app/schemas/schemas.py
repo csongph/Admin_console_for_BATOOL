@@ -36,6 +36,7 @@ class LogEntry(BaseModel):
     timestamp: str
     level: str
     message: str
+    source_file: Optional[str] = None
 
 
 # ─── System schemas ───────────────────────────────────────────────────────────

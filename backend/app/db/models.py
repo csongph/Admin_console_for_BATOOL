@@ -229,6 +229,7 @@ class BatoolLog(Base):
     level:        Mapped[str]           = mapped_column(String(16), default="INFO", nullable=False)
     message:      Mapped[str]           = mapped_column(Text, default="", nullable=False)
     detail:       Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_file:  Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None)
     external_key: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, default=None)
     created_at:   Mapped[datetime]      = mapped_column(
         DateTime(timezone=True),
@@ -238,12 +239,13 @@ class BatoolLog(Base):
 
     def to_dict(self) -> dict:
         return {
-            "id":         self.id,
-            "level":      self.level,
-            "source":     "batool-backend",
-            "message":    self.message,
-            "detail":     self.detail,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "id":          self.id,
+            "level":       self.level,
+            "source":      "batool-backend",
+            "source_file": self.source_file,
+            "message":     self.message,
+            "detail":      self.detail,
+            "created_at":  self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -261,6 +263,7 @@ class AdminConsoleLog(Base):
     level:        Mapped[str]           = mapped_column(String(16), default="INFO", nullable=False)
     message:      Mapped[str]           = mapped_column(Text, default="", nullable=False)
     detail:       Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_file:  Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None)
     external_key: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, default=None)
     created_at:   Mapped[datetime]      = mapped_column(
         DateTime(timezone=True),
@@ -270,10 +273,11 @@ class AdminConsoleLog(Base):
 
     def to_dict(self) -> dict:
         return {
-            "id":         self.id,
-            "level":      self.level,
-            "source":     "admin-console",
-            "message":    self.message,
-            "detail":     self.detail,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "id":          self.id,
+            "level":       self.level,
+            "source":      "admin-console",
+            "source_file": self.source_file,
+            "message":     self.message,
+            "detail":      self.detail,
+            "created_at":  self.created_at.isoformat() if self.created_at else None,
         }

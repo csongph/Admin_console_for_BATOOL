@@ -55,17 +55,44 @@ class RetentionUpdate(BaseModel):
     interval_hours: Optional[int]  = None
 
 
+def _get_caller_source_file(depth: int = 2) -> str:
+    """
+    ดึงชื่อไฟล์ + บรรทัดของ caller จริง โดยใช้ inspect.stack()
+    depth=2 → caller ของ caller (ข้าม write_admin_console_log เอง)
+    คืนค่าในรูป 'routers/admin_logs.py:118'
+    """
+    import inspect, os
+    try:
+        stack = inspect.stack()
+        if len(stack) > depth:
+            frame_info = stack[depth]
+            pathname = frame_info.filename or ""
+            if "app" + os.sep in pathname:
+                rel = pathname.split("app" + os.sep, 1)[-1]
+            else:
+                rel = os.path.basename(pathname)
+            return f"{rel}:{frame_info.lineno}"
+    except Exception:
+        pass
+    return "unknown"
+
+
 async def write_admin_console_log(
-    db:      AsyncSession,
-    level:   str,
-    message: str,
-    detail:  Optional[str] = None,
+    db:          AsyncSession,
+    level:       str,
+    message:     str,
+    detail:      Optional[str] = None,
+    source_file: Optional[str] = None,
 ) -> None:
+    # ถ้าไม่ได้ส่ง source_file มา ให้ auto-detect จาก call stack
+    if source_file is None:
+        source_file = _get_caller_source_file(depth=2)
     entry = AdminConsoleLog(
-        level      = level.upper(),
-        message    = message,
-        detail     = detail,
-        created_at = datetime.now(timezone.utc),
+        level       = level.upper(),
+        message     = message,
+        detail      = detail,
+        source_file = source_file,
+        created_at  = datetime.now(timezone.utc),
     )
     db.add(entry)
 

@@ -163,7 +163,7 @@ function navigate(page) {
 
   const bcPage = document.getElementById('bcPage');
   if (bcPage) {
-    const labels = { dashboard:'Dashboard', mapping:'Mapping Manager', databases:'Database Registry', sessions:'Session Monitor', logs:'Log Viewer', settings:'Settings', activity:'Update Activity', adminlogs:'Admin Logs' };
+    const labels = { dashboard:'Dashboard', mapping:'Mapping Manager', databases:'Database Registry', sessions:'Session Monitor', settings:'Settings', activity:'Update Activity', adminlogs:'Admin Logs' };
     bcPage.textContent = labels[page] || page;
   }
   if (page === 'activity') {
@@ -1561,19 +1561,33 @@ async function fetchLogs() {
     const terminal = document.getElementById('logTerminal');
     if (!terminal) return;
     terminal.innerHTML = '';
-    (data.data || []).forEach(entry => appendLogLine(terminal, entry.timestamp, entry.level, entry.message));
+    (data.data || []).forEach(entry => appendLogLine(terminal, entry.timestamp, entry.level, entry.message, entry.source_file));
     if (logAutoScroll) terminal.scrollTop = terminal.scrollHeight;
   } catch (e) { showToast('Failed to load logs: ' + e.message, 'error'); }
 }
 
-function appendLogLine(terminal, timestamp, level, message) {
+function appendLogLine(terminal, timestamp, level, message, sourceFile) {
   const ts   = (timestamp || new Date().toISOString()).slice(0, 19).replace('T', ' ');
   const line = document.createElement('div');
   line.className = 'log-line';
-  line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-lvl ${(level||'info').toLowerCase()}">${level}</span><span class="log-msg">${message}</span>`;
+  const fileBadge = sourceFile
+    ? `<span class="log-file" title="${sourceFile}">${_shortSourceFile(sourceFile)}</span>`
+    : '';
+  line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-lvl ${(level||'info').toLowerCase()}">${level}</span>${fileBadge}<span class="log-msg">${message}</span>`;
   terminal.appendChild(line);
   const lines = terminal.querySelectorAll('.log-line');
   if (lines.length > 200) lines[0].remove();
+}
+
+/**
+ * ย่อ source_file ให้สั้นลง เช่น
+ * "routers/mappings.py:164" → "mappings.py:164"
+ * "middleware/logging_middleware.py:45" → "logging_middleware.py:45"
+ */
+function _shortSourceFile(sf) {
+  if (!sf) return '';
+  const parts = sf.split('/');
+  return parts[parts.length - 1] || sf;
 }
 
 function filterLogs() {
@@ -1614,7 +1628,7 @@ setInterval(async () => {
   try {
     const data    = await apiCall('/api/logs/new');
     const entries = data.data || [];
-    entries.forEach(e => appendLogLine(terminal, e.timestamp, e.level, e.message));
+    entries.forEach(e => appendLogLine(terminal, e.timestamp, e.level, e.message, e.source_file));
     if (entries.length > 0) {
       if (logAutoScroll) terminal.scrollTop = terminal.scrollHeight;
       filterLogs();
@@ -2600,20 +2614,40 @@ let _sysLogRetention  = null;
 // ── Tab switch ────────────────────────────────────────────────────────────────
 
 function switchAdminLogTab(tab, btn) {
-  _alTab = tab === 'admin' ? 'admin' : 'batool';
+  _alTab = tab === 'admin' ? 'admin' : tab === 'realtime' ? 'realtime' : 'batool';
   document.querySelectorAll('.adminlog-tab').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   const activityPanel = document.getElementById('adminlog-panel-activity');
-  const systemPanel = document.getElementById('adminlog-panel-system');
+  const systemPanel   = document.getElementById('adminlog-panel-system');
+  const realtimePanel = document.getElementById('adminlog-panel-realtime');
   if (activityPanel) activityPanel.style.display = 'none';
-  if (systemPanel) systemPanel.style.display = '';
-  _fetchAdminSystemLogs();
+  if (systemPanel)   systemPanel.style.display   = 'none';
+  if (realtimePanel) realtimePanel.style.display  = 'none';
+  if (_alTab === 'realtime') {
+    if (realtimePanel) realtimePanel.style.display = '';
+    fetchLogs();
+  } else {
+    if (systemPanel) systemPanel.style.display = '';
+    _fetchAdminSystemLogs();
+  }
 }
 
 // ── Main fetch ────────────────────────────────────────────────────────────────
 
 async function fetchAdminLogs() {
-  await Promise.all([_fetchAdminSystemLogs(), _loadSystemLogRetention()]);
+  if (_alTab === 'realtime') {
+    await Promise.all([fetchLogs(), _loadSystemLogRetention()]);
+  } else {
+    await Promise.all([_fetchAdminSystemLogs(), _loadSystemLogRetention()]);
+  }
+}
+
+function _adminLogClearOrClear() {
+  if (_alTab === 'realtime') {
+    clearLogs();
+  } else {
+    openClearSystemLogModal();
+  }
 }
 
 // ── Activity Log ──────────────────────────────────────────────────────────────
@@ -2801,9 +2835,13 @@ function filterAdminSystemLogs() {
   filtered.slice(0, 300).forEach(l => {
     const ts  = (l.timestamp || l.created_at || '').slice(0, 19).replace('T', ' ');
     const lvl = (l.level || 'INFO').toUpperCase();
+    const sf  = l.source_file || null;
+    const fileBadge = sf
+      ? `<span class="log-file" title="${sf}">${_shortSourceFile(sf)}</span>`
+      : '';
     const line = document.createElement('div');
     line.className = 'log-line';
-    line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-lvl ${lvl.toLowerCase()}">${lvl}</span><span class="log-msg">${l.message || ''}</span>`;
+    line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-lvl ${lvl.toLowerCase()}">${lvl}</span>${fileBadge}<span class="log-msg">${l.message || ''}</span>`;
     terminal.appendChild(line);
   });
   terminal.scrollTop = 0;
@@ -2813,9 +2851,10 @@ function filterAdminSystemLogs() {
 
 function exportAdminLogs() {
   const tabLabel = _alTab === 'admin' ? 'admin_console' : 'batool';
-  const lines = _alSystemLogs.map(l =>
-    `${l.created_at || l.timestamp || ''} [${l.level || 'INFO'}] ${l.message || ''}`
-  ).join('\n');
+  const lines = _alSystemLogs.map(l => {
+    const sf = l.source_file ? ` [${l.source_file}]` : '';
+    return `${l.created_at || l.timestamp || ''} [${l.level || 'INFO'}]${sf} ${l.message || ''}`;
+  }).join('\n');
   _downloadText(lines, `${tabLabel}_logs.txt`, 'text/plain');
 }
 
