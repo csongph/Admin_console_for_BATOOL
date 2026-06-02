@@ -2,7 +2,7 @@
 log_service.py
 ──────────────
 ดึง logs จาก BA Tool backend และ persist ลง batool_logs
-รองรับ source_file field เพื่อ track ว่า log มาจากไฟล์ใด
+รองรับ source_file และ username field
 """
 
 import re
@@ -18,6 +18,9 @@ from app.db.models import BatoolLog
 BA_TOOL_URL = "https://ba-tool-backend.onrender.com"
 
 _last_seen_id: int = 0
+
+# pattern: "module_name - INFO - [filename.py:42] - message"
+_SOURCE_FILE_RE = re.compile(r"\[([^\]]+\.py:\d+)\]")
 
 
 async def _load_last_seen_id() -> int:
@@ -37,47 +40,53 @@ async def _load_last_seen_id() -> int:
     return 0
 
 
-# pattern: "module_name - INFO - [filename.py:42] - message"
-_SOURCE_FILE_RE = re.compile(r"\[([^\]]+\.py:\d+)\]")
-
-
 def _parse_created_at(ts: str) -> datetime:
+    """
+    แปลง timestamp string → datetime
+    ถ้า parse ไม่ได้ → ใช้เวลาจริงจากเครื่อง server แทน
+    """
     raw = (ts or "").strip()
     if not raw:
-        return datetime.now(timezone.utc)
+        return datetime.now(timezone.utc)  # ← ใช้เวลาจริง
     try:
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
-        return datetime.now(timezone.utc)
+        pass
+    # ลอง format เพิ่มเติม เช่น "2026-06-02 04:36:52"
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return datetime.now(timezone.utc)  # ← fallback เวลาจริง
 
 
 def _extract_source_file(entry_dict: dict, message: str) -> Optional[str]:
-    """
-    พยายาม detect source_file จากหลาย source:
-    1. field 'source_file' หรือ 'file' ที่ BaTool ส่งมาตรง ๆ
-    2. field 'logger' หรือ 'module' (ชื่อ logger มักเป็น module path)
-    3. parse จาก message string ถ้า format เป็น '[file.py:N]'
-    """
-    # 1. field โดยตรง
     for key in ("source_file", "file", "filename"):
         val = entry_dict.get(key)
         if val and isinstance(val, str):
             return val
 
-    # 2. logger name → module path  (เช่น "app.routers.mappings")
     logger_name = entry_dict.get("logger") or entry_dict.get("name") or entry_dict.get("module")
     if logger_name and isinstance(logger_name, str) and "." in logger_name:
-        # "app.routers.mappings" → "routers/mappings.py"
         parts = logger_name.split(".")
         if parts[0] == "app":
             parts = parts[1:]
         return "/".join(parts) + ".py"
 
-    # 3. parse จาก message  "[routers/mappings.py:164]"
     m = _SOURCE_FILE_RE.search(message or "")
     if m:
         return m.group(1)
 
+    return None
+
+
+def _extract_username(entry_dict: dict) -> Optional[str]:
+    """ดึง username จาก log entry ถ้ามี"""
+    for key in ("username", "user", "actor"):
+        val = entry_dict.get(key)
+        if val and isinstance(val, str):
+            return val
     return None
 
 
@@ -92,13 +101,19 @@ async def _persist_to_batool_logs(entries: Iterable[LogEntry], raw_dicts: List[d
         keys.append(external_key)
         raw = raw_map.get(e.id, {})
         source_file = _extract_source_file(raw, e.message)
+        username    = _extract_username(raw)
+
+        # ใช้ timestamp จาก log ถ้ามี ไม่งั้นใช้เวลาจริง
+        created_at = _parse_created_at(e.timestamp)
+
         rows.append(BatoolLog(
             level        = e.level.upper(),
             message      = e.message,
             detail       = f"batool_id={e.id}; timestamp={e.timestamp}",
             source_file  = source_file,
+            username     = username,
             external_key = external_key,
-            created_at   = _parse_created_at(e.timestamp),
+            created_at   = created_at,
         ))
 
     if not rows:
@@ -121,7 +136,6 @@ async def _persist_to_batool_logs(entries: Iterable[LogEntry], raw_dicts: List[d
 
 async def get_all_logs() -> List[LogEntry]:
     global _last_seen_id
-    # โหลดจาก DB ก่อนเสมอเพื่อให้ถูกต้องหลัง restart
     if _last_seen_id == 0:
         _last_seen_id = await _load_last_seen_id()
     entries, raw_dicts = await _fetch_raw()
@@ -133,7 +147,6 @@ async def get_all_logs() -> List[LogEntry]:
 
 async def get_new_logs() -> List[LogEntry]:
     global _last_seen_id
-    # โหลดจาก DB ก่อนเสมอเพื่อให้ถูกต้องหลัง restart
     if _last_seen_id == 0:
         _last_seen_id = await _load_last_seen_id()
     all_entries, raw_dicts = await _fetch_raw()
@@ -179,7 +192,7 @@ async def _fetch_raw() -> tuple[List[LogEntry], List[dict]]:
     logs: List[LogEntry] = []
     for i, entry in enumerate(raw_list):
         if isinstance(entry, str):
-            parts   = entry.split("]", 1)
+            parts = entry.split("]", 1)
             if len(parts) == 2:
                 ts_part = parts[0].replace("[", "").strip()
                 rest    = parts[1].strip()
@@ -190,9 +203,16 @@ async def _fetch_raw() -> tuple[List[LogEntry], List[dict]]:
                 ts_part, level, message = "", "INFO", entry
             logs.append(LogEntry(id=i + 1, timestamp=ts_part, level=level.upper(), message=message))
         elif isinstance(entry, dict):
+            # ดึง timestamp จาก field ที่เป็นไปได้ทั้งหมด
+            ts = (
+                entry.get("timestamp")
+                or entry.get("created_at")
+                or entry.get("time")
+                or ""
+            )
             logs.append(LogEntry(
                 id        = entry.get("id", i + 1),
-                timestamp = entry.get("timestamp", entry.get("created_at", "")),
+                timestamp = ts,
                 level     = str(entry.get("level", "INFO")).upper(),
                 message   = entry.get("message", entry.get("msg", str(entry))),
             ))

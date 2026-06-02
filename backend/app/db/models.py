@@ -220,17 +220,18 @@ class BatoolLog(Base):
     """Log จาก BA Tool backend"""
     __tablename__ = "batool_logs"
     __table_args__ = (
-        Index("ix_batool_log_level",      "level"),
-        Index("ix_batool_log_created_at", "created_at"),
+        Index("ix_batool_log_level",       "level"),
+        Index("ix_batool_log_created_at",  "created_at"),
         Index("ix_batool_log_external_key", "external_key", unique=True),
     )
 
     id:           Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
-    level:        Mapped[str]           = mapped_column(String(16), default="INFO", nullable=False)
-    message:      Mapped[str]           = mapped_column(Text, default="", nullable=False)
-    detail:       Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    source_file:  Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None)
-    external_key: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, default=None)
+    level:        Mapped[str]           = mapped_column(String(16),  default="INFO", nullable=False)
+    message:      Mapped[str]           = mapped_column(Text,        default="",     nullable=False)
+    detail:       Mapped[Optional[str]] = mapped_column(Text,        nullable=True)
+    source_file:  Mapped[Optional[str]] = mapped_column(String(128), nullable=True,  default=None)
+    username:     Mapped[Optional[str]] = mapped_column(String(128), nullable=True,  default=None)  # ← เพิ่ม: ใครทำ
+    external_key: Mapped[Optional[str]] = mapped_column(String(256), nullable=True,  default=None)
     created_at:   Mapped[datetime]      = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -243,6 +244,7 @@ class BatoolLog(Base):
             "level":       self.level,
             "source":      "batool-backend",
             "source_file": self.source_file,
+            "username":    self.username,
             "message":     self.message,
             "detail":      self.detail,
             "created_at":  self.created_at.isoformat() if self.created_at else None,
@@ -254,17 +256,18 @@ class AdminConsoleLog(Base):
     """Log จาก Admin Console backend (request / system events)"""
     __tablename__ = "admin_console_logs"
     __table_args__ = (
-        Index("ix_admin_log_level",      "level"),
-        Index("ix_admin_log_created_at", "created_at"),
+        Index("ix_admin_log_level",       "level"),
+        Index("ix_admin_log_created_at",  "created_at"),
         Index("ix_admin_log_external_key", "external_key", unique=True),
     )
 
     id:           Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
-    level:        Mapped[str]           = mapped_column(String(16), default="INFO", nullable=False)
-    message:      Mapped[str]           = mapped_column(Text, default="", nullable=False)
-    detail:       Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    source_file:  Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None)
-    external_key: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, default=None)
+    level:        Mapped[str]           = mapped_column(String(16),  default="INFO", nullable=False)
+    message:      Mapped[str]           = mapped_column(Text,        default="",     nullable=False)
+    detail:       Mapped[Optional[str]] = mapped_column(Text,        nullable=True)
+    source_file:  Mapped[Optional[str]] = mapped_column(String(128), nullable=True,  default=None)
+    username:     Mapped[Optional[str]] = mapped_column(String(128), nullable=True,  default=None)  # ← เพิ่ม: ใครทำ
+    external_key: Mapped[Optional[str]] = mapped_column(String(256), nullable=True,  default=None)
     created_at:   Mapped[datetime]      = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -277,6 +280,7 @@ class AdminConsoleLog(Base):
             "level":       self.level,
             "source":      "admin-console",
             "source_file": self.source_file,
+            "username":    self.username,
             "message":     self.message,
             "detail":      self.detail,
             "created_at":  self.created_at.isoformat() if self.created_at else None,

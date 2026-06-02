@@ -25,14 +25,7 @@ def clear_recent_request_logs() -> int:
 
 
 def _caller_source_file() -> str:
-    """
-    หา source_file จาก logging record ของ caller จริง
-    คืนค่าในรูป 'routers/mappings.py:164'
-    """
     import traceback
-    import sys
-
-    # walk the call stack เพื่อหา frame แรกที่ไม่ใช่ logging / middleware
     skip_prefixes = (
         os.path.join("logging"),
         os.path.join("middleware", "logging_middleware"),
@@ -43,13 +36,11 @@ def _caller_source_file() -> str:
     )
     for frame_info in traceback.extract_stack():
         filename = frame_info.filename
-        # normalize ให้เป็น relative path จาก "app/"
         if "app" + os.sep in filename:
             rel = filename.split("app" + os.sep, 1)[-1]
         else:
             rel = os.path.basename(filename)
 
-        # ข้าม frame ที่ไม่น่าสนใจ
         if any(filename.replace("\\", "/").endswith(p.replace("\\", "/")) for p in skip_prefixes):
             continue
         if filename.startswith("<"):
@@ -60,28 +51,41 @@ def _caller_source_file() -> str:
 
 
 class _FileTrackingHandler(logging.Handler):
-    """
-    Handler ที่แนบ source_file กลับมาด้วย โดยใช้ข้อมูลจาก LogRecord โดยตรง
-    (%(filename)s:%(lineno)d) — แม่นยำกว่า stack walk
-    """
-
     def emit(self, record: logging.LogRecord) -> None:
-        # ดึงชื่อไฟล์จริงจาก record (Python logging ติดมาให้แล้ว)
-        # record.pathname = full path, record.filename = basename only
         pathname = record.pathname or ""
         if "app" + os.sep in pathname:
             rel = pathname.split("app" + os.sep, 1)[-1]
         else:
             rel = record.filename
-
-        # เก็บใน record เผื่อ middleware จะอ่านทีหลัง
         record.source_file = f"{rel}:{record.lineno}"
 
 
-# ติดตั้ง handler ระดับ root ให้ทำงานตลอดเวลา
 _tracking_handler = _FileTrackingHandler()
 _tracking_handler.setLevel(logging.DEBUG)
 logging.getLogger().addHandler(_tracking_handler)
+
+
+def _extract_username_from_request(request: Request) -> str:
+    """
+    พยายามดึง username จาก JWT token ใน Authorization header
+    คืน 'anonymous' ถ้าไม่มี token หรือ decode ไม่ได้
+    """
+    try:
+        auth = request.headers.get("authorization", "")
+        if not auth.startswith("Bearer "):
+            return "anonymous"
+        token = auth.split(" ", 1)[1]
+        import base64, json
+        # decode JWT payload (ไม่ verify signature — แค่อ่าน claim)
+        payload_part = token.split(".")[1]
+        # เติม padding ให้ครบ
+        padding = 4 - len(payload_part) % 4
+        if padding != 4:
+            payload_part += "=" * padding
+        payload = json.loads(base64.urlsafe_b64decode(payload_part))
+        return payload.get("sub") or payload.get("username") or "unknown"
+    except Exception:
+        return "anonymous"
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -90,7 +94,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         duration_ms = (time.perf_counter() - start) * 1000
 
-        # source_file สำหรับ middleware log line นี้
+        # ใช้เวลาจริงจากเครื่อง server
+        created_at = datetime.now(timezone.utc)
+
         this_file = f"middleware/logging_middleware.py:{logging.currentframe().f_lineno}"
 
         logger.info(
@@ -106,15 +112,18 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                     else "WARN"  if response.status_code >= 400
                     else "INFO"
                 )
+                # ดึง username จาก token
+                username = _extract_username_from_request(request)
+
                 message = (
                     f"{request.method} {path} "
                     f"-> {response.status_code} ({duration_ms:.1f}ms)"
                 )
                 detail = (
                     f"client={request.client.host if request.client else '-'} "
-                    f"query={request.url.query or '-'}"
+                    f"query={request.url.query or '-'} "
+                    f"user={username}"  # ← เพิ่ม username ใน detail ด้วย
                 )
-                created_at   = datetime.now(timezone.utc)
                 external_key = f"admin:{request.method}:{path}:{int(created_at.timestamp() * 1000)}"
                 source_file  = this_file
 
@@ -122,6 +131,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                     "level":       level,
                     "source":      "admin-console",
                     "source_file": source_file,
+                    "username":    username,
                     "message":     message,
                     "detail":      detail,
                     "created_at":  created_at.isoformat(),
@@ -132,6 +142,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                         message      = message,
                         detail       = detail,
                         source_file  = source_file,
+                        username     = username,   # ← บันทึก username ลง DB
                         external_key = external_key,
                         created_at   = created_at,
                     ))

@@ -1,13 +1,7 @@
 """
 routers/databases.py
 ────────────────────
-แก้ไขจาก version เดิม — เพิ่ม:
-  1. sanitize + validate key (lowercase, strip spaces, regex)
-  2. duplicate check แบบ case-insensitive
-  3. structured error response  (error code + message)
-  4. lookup endpoint สำหรับ dropdown /api/database-records/enabled
-  5. logging
-  6. backward compatible — ทุก route เดิมยังทำงานได้ปกติ
+เพิ่ม record_activity ใน create / update / delete
 """
 import re
 import logging
@@ -22,36 +16,28 @@ from app.schemas.schemas import APIResponse
 from app.core.security import get_current_user
 from app.db.database import get_db
 from app.db.models import DatabaseRecord, MappingRule, SessionRecord
+from app.routers.activity import record_activity
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Databases"])
 
-# ── Key sanitize helper ───────────────────────────────────────────────────────
 _KEY_PATTERN = re.compile(r"^[a-z0-9_]+$")
 
 
 def sanitize_key(raw: str) -> str:
-    """
-    MSSQL PROD  -> mssqlprod
-    My DB_01    -> mydb_01
-    """
     return re.sub(r"\s+", "", raw.strip().lower())
 
 
 def validate_key(key: str) -> str:
-    """Raise ValueError ถ้า key ไม่ผ่าน — ใช้ใน Pydantic validator"""
     sanitized = sanitize_key(key)
     if not sanitized:
         raise ValueError("Key must not be empty")
     if not _KEY_PATTERN.match(sanitized):
         raise ValueError(
-            "Key must contain only lowercase letters (a-z), digits (0-9), "
-            "and underscores (_)"
+            "Key must contain only lowercase letters (a-z), digits (0-9), and underscores (_)"
         )
     return sanitized
 
-
-# ─── Schemas ──────────────────────────────────────────────────────────────────
 
 class DatabaseCreate(BaseModel):
     key:     str
@@ -99,8 +85,6 @@ class DatabaseUpdate(BaseModel):
         return v
 
 
-# ─── Default databases to seed on first run ───────────────────────────────────
-
 _DEFAULTS = [
     {"key": "sqlserver",  "name": "SQL Server", "version": "2019", "status": "active", "enabled": True},
     {"key": "postgresql", "name": "PostgreSQL",  "version": "15.x", "status": "active", "enabled": True},
@@ -136,18 +120,13 @@ async def _count_sessions(db: AsyncSession, key: str) -> int:
 
 
 async def _key_exists(db: AsyncSession, key: str, exclude_id: Optional[int] = None) -> bool:
-    """Case-insensitive duplicate check"""
     from sqlalchemy import func as sqlfunc
-    q = select(DatabaseRecord).where(
-        sqlfunc.lower(DatabaseRecord.key) == key.lower()
-    )
+    q = select(DatabaseRecord).where(sqlfunc.lower(DatabaseRecord.key) == key.lower())
     if exclude_id is not None:
         q = q.where(DatabaseRecord.id != exclude_id)
     result = await db.execute(q)
     return result.scalar_one_or_none() is not None
 
-
-# ─── Routes ───────────────────────────────────────────────────────────────────
 
 @router.get("/databases", response_model=APIResponse)
 async def get_databases(
@@ -171,22 +150,30 @@ async def create_database(
     db:           AsyncSession = Depends(get_db),
     current_user: dict         = Depends(get_current_user),
 ):
-    # key ผ่าน Pydantic validator แล้ว (sanitize + regex)
     if await _key_exists(db, body.key):
         logger.warning("Duplicate DB key attempt: %s", body.key)
         raise HTTPException(
             status_code=409,
-            detail={
-                "success":  False,
-                "error":    "DATABASE_KEY_ALREADY_EXISTS",
-                "message":  f"Database key '{body.key}' already exists",
-            },
+            detail={"success": False, "error": "DATABASE_KEY_ALREADY_EXISTS",
+                    "message": f"Database key '{body.key}' already exists"},
         )
     record = DatabaseRecord(**body.dict())
     db.add(record)
+    await db.flush()
+
+    username = current_user.get("username", "unknown")
+    await record_activity(
+        db          = db,
+        username    = username,
+        action      = "create",
+        target_type = "database",
+        target_id   = str(record.id),
+        summary     = f"เพิ่ม database: {body.key} ({body.name})",
+        detail      = {"after": record.to_dict()},
+    )
     await db.commit()
     await db.refresh(record)
-    logger.info("Database created: key=%s by user=%s", body.key, current_user.get("username"))
+    logger.info("Database created: key=%s by user=%s", body.key, username)
     return APIResponse(success=True, message="Database added", data=record.to_dict())
 
 
@@ -202,24 +189,32 @@ async def update_database(
     if not record:
         raise HTTPException(status_code=404, detail="Database not found")
 
+    before  = record.to_dict()
     updates = body.dict(exclude_none=True)
 
-    # ถ้า key เปลี่ยน ต้อง check duplicate ด้วย
     if "key" in updates and await _key_exists(db, updates["key"], exclude_id=db_id):
         raise HTTPException(
             status_code=409,
-            detail={
-                "success": False,
-                "error":   "DATABASE_KEY_ALREADY_EXISTS",
-                "message": f"Database key '{updates['key']}' already exists",
-            },
+            detail={"success": False, "error": "DATABASE_KEY_ALREADY_EXISTS",
+                    "message": f"Database key '{updates['key']}' already exists"},
         )
 
     for field, value in updates.items():
         setattr(record, field, value)
+
+    username = current_user.get("username", "unknown")
+    await record_activity(
+        db          = db,
+        username    = username,
+        action      = "update",
+        target_type = "database",
+        target_id   = str(db_id),
+        summary     = f"แก้ไข database ID {db_id}: {record.key}",
+        detail      = {"before": before, "changes": updates, "after": record.to_dict()},
+    )
     await db.commit()
     await db.refresh(record)
-    logger.info("Database updated: id=%s by user=%s", db_id, current_user.get("username"))
+    logger.info("Database updated: id=%s by user=%s", db_id, username)
     return APIResponse(success=True, message="Database updated", data=record.to_dict())
 
 
@@ -233,29 +228,32 @@ async def delete_database(
     record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Database not found")
-    data = record.to_dict()
+
+    data     = record.to_dict()
+    username = current_user.get("username", "unknown")
     await db.delete(record)
+    await record_activity(
+        db          = db,
+        username    = username,
+        action      = "delete",
+        target_type = "database",
+        target_id   = str(db_id),
+        summary     = f"ลบ database: {data['key']} ({data['name']})",
+        detail      = {"before": data},
+    )
     await db.commit()
-    logger.info("Database deleted: key=%s by user=%s", data["key"], current_user.get("username"))
+    logger.info("Database deleted: key=%s by user=%s", data["key"], username)
     return APIResponse(success=True, message="Database removed", data=data)
 
 
-# ── NEW: Lookup endpoint for dropdown — GET /api/database-records/enabled ─────
-
 @router.get("/database-records/enabled", response_model=APIResponse)
 async def get_enabled_databases(
-    search: Optional[str] = Query(None, description="Filter by key prefix"),
-    limit:  int           = Query(100,  ge=1, le=500),
+    search: Optional[str] = Query(None),
+    limit:  int           = Query(100, ge=1, le=500),
     db:     AsyncSession  = Depends(get_db),
     current_user: dict    = Depends(get_current_user),
 ):
-    """
-    Lightweight endpoint สำหรับ dropdown ใน Mapping Form
-    Returns: [{id, key}] เฉพาะ enabled=true
-    """
-    q = select(DatabaseRecord.id, DatabaseRecord.key).where(
-        DatabaseRecord.enabled == True  # noqa: E712
-    )
+    q = select(DatabaseRecord.id, DatabaseRecord.key).where(DatabaseRecord.enabled == True)  # noqa: E712
     if search:
         q = q.where(DatabaseRecord.key.ilike(f"%{search}%"))
     q = q.order_by(DatabaseRecord.key).limit(limit)

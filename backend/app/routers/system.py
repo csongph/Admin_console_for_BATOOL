@@ -1,16 +1,8 @@
 """
 routers/system.py
 ─────────────────
-System control endpoints + Maintenance Mode
-
-Endpoints:
-  GET  /api/system/status           → สถานะระบบ
-  POST /api/system/start            → start system
-  POST /api/system/stop             → stop system
-  GET  /api/system/maintenance      → ดูสถานะ maintenance (ทุกคนเรียกได้ เพื่อให้ฝั่ง user ตรวจได้)
-  POST /api/system/maintenance      → toggle maintenance (admin เท่านั้น)
+เพิ่ม record_activity ใน start/stop/settings/maintenance
 """
-
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -23,15 +15,14 @@ from app.services import system_service
 from app.core.security import get_current_user
 from app.db.database import get_db
 from app.db.models import AdminUser
+from app.routers.activity import record_activity
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["System"])
 
 
-# ─── Guard: ต้องเป็น admin ────────────────────────────────────────────────────
-
 async def require_admin(
-    current_user: dict      = Depends(get_current_user),
+    current_user: dict       = Depends(get_current_user),
     db:           AsyncSession = Depends(get_db),
 ) -> dict:
     username = current_user.get("username", "")
@@ -45,14 +36,10 @@ async def require_admin(
     return current_user
 
 
-# ─── Schemas ──────────────────────────────────────────────────────────────────
-
 class MaintenanceRequest(BaseModel):
     enabled: bool
-    reason:  str = ""   # optional — แสดงใน banner ฝั่ง user
+    reason:  str = ""
 
-
-# ─── Routes ───────────────────────────────────────────────────────────────────
 
 class SettingsRequest(BaseModel):
     settings: Dict[str, str]
@@ -72,7 +59,19 @@ async def start_system(
     current_user: dict         = Depends(get_current_user),
     db:           AsyncSession = Depends(get_db),
 ):
-    data = await system_service.start_system(db)
+    data     = await system_service.start_system(db)
+    username = current_user.get("username", "unknown")
+    await record_activity(
+        db          = db,
+        username    = username,
+        action      = "start",
+        target_type = "system",
+        target_id   = None,
+        summary     = f"Start system โดย {username}",
+        detail      = {"result": data},
+    )
+    await db.commit()
+    logger.info("System started by user=%s", username)
     return APIResponse(success=True, message="System started", data=data)
 
 
@@ -81,15 +80,24 @@ async def stop_system(
     current_user: dict         = Depends(get_current_user),
     db:           AsyncSession = Depends(get_db),
 ):
-    data = await system_service.stop_system(db)
+    data     = await system_service.stop_system(db)
+    username = current_user.get("username", "unknown")
+    await record_activity(
+        db          = db,
+        username    = username,
+        action      = "stop",
+        target_type = "system",
+        target_id   = None,
+        summary     = f"Stop system โดย {username}",
+        detail      = {"result": data},
+    )
+    await db.commit()
+    logger.info("System stopped by user=%s", username)
     return APIResponse(success=True, message="System stopped", data=data)
 
 
-# ── Maintenance ────────────────────────────────────────────────────────────────
-
 @router.get("/settings/public", response_model=APIResponse)
 async def get_public_settings(db: AsyncSession = Depends(get_db)):
-    """Public — ค่าที่ login page / client ต้องใช้ (ไม่ต้อง auth)"""
     from app.services import auth_service
     data = await auth_service.get_public_auth_settings(db)
     return APIResponse(success=True, message="Public settings", data=data)
@@ -110,17 +118,25 @@ async def update_settings(
     db:           AsyncSession = Depends(get_db),
     current_user: dict         = Depends(require_admin),
 ):
-    data = await system_service.set_settings(db, body.settings)
-    logger.info("System settings updated by admin %s", current_user["username"])
+    old_data = await system_service.get_settings(db)
+    data     = await system_service.set_settings(db, body.settings)
+    username = current_user.get("username", "unknown")
+    await record_activity(
+        db          = db,
+        username    = username,
+        action      = "update",
+        target_type = "system_settings",
+        target_id   = None,
+        summary     = f"แก้ไข system settings โดย {username}",
+        detail      = {"before": old_data, "changes": body.settings, "after": data},
+    )
+    await db.commit()
+    logger.info("System settings updated by admin %s", username)
     return APIResponse(success=True, message="Settings updated", data=data)
 
 
 @router.get("/maintenance", response_model=APIResponse)
 async def get_maintenance(db: AsyncSession = Depends(get_db)):
-    """
-    Public endpoint — ไม่ต้อง login
-    ให้ฝั่ง user / BATOOL polling ตรวจสอบสถานะได้โดยไม่ต้องมี token
-    """
     data = await system_service.get_maintenance(db)
     return APIResponse(success=True, message="Maintenance status", data=data)
 
@@ -131,10 +147,9 @@ async def set_maintenance(
     db:           AsyncSession = Depends(get_db),
     current_user: dict         = Depends(require_admin),
 ):
-    """Admin only — toggle maintenance mode"""
-    data = await system_service.set_maintenance(db, body.enabled)
+    data     = await system_service.set_maintenance(db, body.enabled)
+    username = current_user.get("username", "unknown")
 
-    # บันทึก reason ถ้ามี (เก็บใน SystemSetting ด้วย)
     if body.reason.strip():
         from app.db.models import SystemSetting
         result = await db.execute(
@@ -145,10 +160,19 @@ async def set_maintenance(
             row.value = body.reason.strip()
         else:
             db.add(SystemSetting(key="maintenance_reason", value=body.reason.strip()))
-        await db.commit()
 
     state = "เปิด" if body.enabled else "ปิด"
-    logger.info("Maintenance mode %s by admin %s", state, current_user["username"])
+    await record_activity(
+        db          = db,
+        username    = username,
+        action      = "maintenance_on" if body.enabled else "maintenance_off",
+        target_type = "system",
+        target_id   = None,
+        summary     = f"Maintenance mode {state}โดย {username}",
+        detail      = {"enabled": body.enabled, "reason": body.reason},
+    )
+    await db.commit()
+    logger.info("Maintenance mode %s by admin %s", state, username)
     return APIResponse(
         success=True,
         message=f"Maintenance mode {state}ใช้งานแล้ว",
@@ -158,7 +182,6 @@ async def set_maintenance(
 
 @router.get("/maintenance/reason", response_model=APIResponse)
 async def get_maintenance_reason(db: AsyncSession = Depends(get_db)):
-    """Public — ดึง reason ที่ admin กรอก"""
     from app.db.models import SystemSetting
     result = await db.execute(
         select(SystemSetting).where(SystemSetting.key == "maintenance_reason")
