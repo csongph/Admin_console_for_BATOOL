@@ -116,6 +116,15 @@ async def init_db():
             )
         """))
         await conn.execute(text(
+            "ALTER TABLE batool_logs ADD COLUMN IF NOT EXISTS source_file VARCHAR(128) DEFAULT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE batool_logs ADD COLUMN IF NOT EXISTS username VARCHAR(128) DEFAULT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE batool_logs ADD COLUMN IF NOT EXISTS external_key VARCHAR(256) DEFAULT NULL"
+        ))
+        await conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_batool_log_level ON batool_logs (level)"
         ))
         await conn.execute(text(
@@ -136,6 +145,15 @@ async def init_db():
                 created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
             )
         """))
+        await conn.execute(text(
+            "ALTER TABLE admin_console_logs ADD COLUMN IF NOT EXISTS source_file VARCHAR(128) DEFAULT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE admin_console_logs ADD COLUMN IF NOT EXISTS username VARCHAR(128) DEFAULT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE admin_console_logs ADD COLUMN IF NOT EXISTS external_key VARCHAR(256) DEFAULT NULL"
+        ))
         await conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_admin_log_level ON admin_console_logs (level)"
         ))
