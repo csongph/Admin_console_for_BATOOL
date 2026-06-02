@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import List, Optional
 
 
@@ -27,6 +28,21 @@ class Settings(BaseSettings):
         "https://ba-tool-for-multiple-db.vercel.app",
         "https://admin-console-for-batool-91pz.vercel.app",
     ]
+    ALLOWED_ORIGIN_REGEX: Optional[str] = (
+        r"https://admin-console-for-batool(-[a-z0-9]+)?\.vercel\.app"
+    )
+
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return []
+            if value.startswith("["):
+                return value
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     class Config:
         env_file = ".env"
