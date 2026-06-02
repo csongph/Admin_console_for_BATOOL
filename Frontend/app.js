@@ -356,7 +356,7 @@ async function refreshDashboard() {
       activityFeed.innerHTML = recent.map(l => {
         const level    = (l.level || 'INFO').toUpperCase();
         const dotClass = level === 'WARNING' ? 'warn' : level === 'ERROR' ? 'error' : 'success';
-        return `<div class="activity-item"><div class="activity-dot ${dotClass}"></div><div class="activity-body"><div class="activity-msg">${l.message}</div><div class="activity-time">${(l.timestamp || '').replace('T',' ').slice(0,19)}</div></div></div>`;
+        return `<div class="activity-item"><div class="activity-dot ${dotClass}"></div><div class="activity-body"><div class="activity-msg">${l.message}</div><div class="activity-time">${formatLocalDateTime(l.timestamp)}</div></div></div>`;
       }).join('');
     }
 
@@ -1475,7 +1475,7 @@ function renderOnlineUsers(users, total) {
       <td style="font-family:var(--mono);font-size:11px">${u.client_id.slice(0,8)}…</td>
       <td>${!u.user_id ? '<span style="color:var(--text3)">Guest</span>' : u.user_id}</td>
       <td style="font-family:var(--mono);font-size:11px">${u.page}</td>
-      <td style="font-size:11px;color:var(--text3)">${u.connected_at?.slice(11,19)||'-'}</td>
+      <td style="font-size:11px;color:var(--text3)">${formatLocalTime(u.connected_at)}</td>
       <td><span class="badge badge-${u.idle_seconds<60?'active':'draft'}">${idleTxt}</span></td>
     </tr>`;
   }).join('');
@@ -1514,7 +1514,7 @@ function renderSessions() {
       <td><span class="badge badge-active">${s.role}</span></td>
       <td style="font-family:var(--mono);font-size:11px">${s.db}</td>
       <td style="font-family:var(--mono)">${s.tables}</td>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${s.created}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${formatLocalDateTime(s.created)}</td>
       <td><span class="ttl-badge ${ttlClass}">⏱ ${ttlText}</span></td>
       <td><span class="badge badge-${s.status==='active'?'active':s.status==='warning'?'draft':'deprecated'}">${s.status}</span></td>
       <td><div class="row-actions"><button class="row-btn danger" onclick="revokeSession('${s.id}')">✕ Revoke</button></div></td>
@@ -2030,6 +2030,45 @@ function formatActivityDate(iso) {
     const time = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     return `<span style="display:block;font-size:12px;font-weight:600">${date}</span><span style="display:block;font-size:11px;color:var(--text3)">${time}</span>`;
   } catch { return iso; }
+}
+
+function formatLocalTime(iso) {
+  if (!iso) return '—';
+  try {
+    let clean = iso.trim().replace(' ', 'T');
+    if (!clean.endsWith('Z') && !clean.includes('+') && !clean.includes('GMT')) {
+      clean += 'Z';
+    }
+    const d = new Date(clean);
+    if (isNaN(d.getTime())) return iso;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${hh}:${min}:${ss}`;
+  } catch {
+    return iso;
+  }
+}
+
+function formatLocalDateTime(iso) {
+  if (!iso) return '—';
+  try {
+    let clean = iso.trim().replace(' ', 'T');
+    if (!clean.endsWith('Z') && !clean.includes('+') && !clean.includes('GMT')) {
+      clean += 'Z';
+    }
+    const d = new Date(clean);
+    if (isNaN(d.getTime())) return iso;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+  } catch {
+    return iso;
+  }
 }
 
 async function fetchActivities() {
@@ -2837,7 +2876,7 @@ function filterAdminSystemLogs() {
     return;
   }
   filtered.slice(0, 300).forEach(l => {
-    const ts  = (l.timestamp || l.created_at || '').slice(0, 19).replace('T', ' ');
+    const ts  = formatLocalDateTime(l.timestamp || l.created_at);
     const lvl = (l.level || 'INFO').toUpperCase();
     const sf  = l.source_file || null;
     const fileBadge = sf
