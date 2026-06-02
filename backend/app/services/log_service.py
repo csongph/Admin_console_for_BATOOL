@@ -9,7 +9,7 @@ import re
 import httpx
 from typing import List, Iterable, Optional
 from datetime import datetime, timezone
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.schemas.schemas import LogEntry
 from app.db.database import AsyncSessionLocal
@@ -18,6 +18,24 @@ from app.db.models import BatoolLog
 BA_TOOL_URL = "https://ba-tool-backend.onrender.com"
 
 _last_seen_id: int = 0
+
+
+async def _load_last_seen_id() -> int:
+    """โหลด last seen id จาก DB เพื่อไม่ให้ reset เมื่อ backend restart"""
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(func.max(BatoolLog.external_key)).where(
+                    BatoolLog.external_key.like("batool:%")
+                )
+            )
+            val = result.scalar_one_or_none()
+            if val:
+                return int(val.replace("batool:", ""))
+    except Exception:
+        pass
+    return 0
+
 
 # pattern: "module_name - INFO - [filename.py:42] - message"
 _SOURCE_FILE_RE = re.compile(r"\[([^\]]+\.py:\d+)\]")
@@ -103,6 +121,9 @@ async def _persist_to_batool_logs(entries: Iterable[LogEntry], raw_dicts: List[d
 
 async def get_all_logs() -> List[LogEntry]:
     global _last_seen_id
+    # โหลดจาก DB ก่อนเสมอเพื่อให้ถูกต้องหลัง restart
+    if _last_seen_id == 0:
+        _last_seen_id = await _load_last_seen_id()
     entries, raw_dicts = await _fetch_raw()
     if entries:
         await _persist_to_batool_logs(entries, raw_dicts)
@@ -112,6 +133,9 @@ async def get_all_logs() -> List[LogEntry]:
 
 async def get_new_logs() -> List[LogEntry]:
     global _last_seen_id
+    # โหลดจาก DB ก่อนเสมอเพื่อให้ถูกต้องหลัง restart
+    if _last_seen_id == 0:
+        _last_seen_id = await _load_last_seen_id()
     all_entries, raw_dicts = await _fetch_raw()
     new_entries = [e for e in all_entries if e.id > _last_seen_id]
     if new_entries:
@@ -123,7 +147,7 @@ async def get_new_logs() -> List[LogEntry]:
 async def clear_display_logs() -> int:
     """ล้าง batool_logs ใน DB และ reset poll cursor"""
     global _last_seen_id
-    from sqlalchemy import delete, func
+    from sqlalchemy import delete
     deleted = 0
     try:
         async with AsyncSessionLocal() as db:
