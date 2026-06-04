@@ -175,7 +175,7 @@ function navigate(page) {
     fetchMyRole().then(() => loadMaintenanceState());
   }
   if (page === 'adminlogs') {
-    fetchAdminLogs();
+    fetchMyRole().then(() => fetchAdminLogs());
   }
   if (isMobile()) closeMobileSidebar();
 }
@@ -2951,7 +2951,13 @@ function _renderRetentionModalFields() {
   if (nextEl) nextEl.textContent = r.next_run ? new Date(r.next_run).toLocaleString('th-TH') : '—';
 }
 
-function openSystemLogRetentionModal() {
+async function openSystemLogRetentionModal() {
+  // fetch ข้อมูลล่าสุดจาก server ก่อนเปิด modal เสมอ
+  try {
+    await _loadSystemLogRetention();
+  } catch (e) {
+    console.warn('[retention] load failed, using cached data:', e.message);
+  }
   _renderRetentionModalFields();
   document.querySelectorAll('#sysLogRetentionDaysWrap [data-ret-days]').forEach(b => {
     b.onclick = () => {
