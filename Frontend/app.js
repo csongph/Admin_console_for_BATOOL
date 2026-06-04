@@ -3010,22 +3010,58 @@ async function runSystemLogRetentionNow() {
   }
 }
 
+let _sysLogClearMode = 'now';    // 'now' | 'schedule'
+let _sysLogSchedDays = 7;
+
+function setSysLogClearMode(mode) {
+  _sysLogClearMode = mode;
+  document.getElementById('sysLogClearModeNow')?.classList.toggle('active', mode === 'now');
+  document.getElementById('sysLogClearModeSchedule')?.classList.toggle('active', mode === 'schedule');
+  document.getElementById('sysLogClearNowPanel').style.display      = mode === 'now' ? '' : 'none';
+  document.getElementById('sysLogClearSchedulePanel').style.display  = mode === 'schedule' ? 'flex' : 'none';
+  const btn = document.getElementById('btnConfirmSysLogClear');
+  if (btn) btn.textContent = mode === 'now' ? 'ยืนยันเคลียร์' : 'บันทึกตั้งเวลา';
+}
+
 function openClearSystemLogModal() {
   _sysLogClearDays = 0;
-  const srcSel = document.getElementById('sysLogClearSource');
-  if (srcSel) srcSel.value = _alTab === 'admin' ? 'admin' : 'batool';
+  _sysLogClearMode = 'now';
+
+  // reset mode UI
+  setSysLogClearMode('now');
+
+  // reset days buttons
   document.querySelectorAll('[data-sys-days]').forEach(b =>
     b.classList.toggle('active', parseInt(b.dataset.sysDays) === 0));
   const label = document.getElementById('sysLogClearLabel');
   if (label) label.textContent = 'ทั้งหมด';
+
+  // bind immediate days buttons
   document.querySelectorAll('#sysLogClearDaysWrap [data-sys-days]').forEach(b => {
     b.onclick = () => {
       _sysLogClearDays = parseInt(b.dataset.sysDays);
       document.querySelectorAll('[data-sys-days]').forEach(x => x.classList.remove('active'));
       b.classList.add('active');
-      if (label) label.textContent = _sysLogClearDays === 0 ? 'ทั้งหมด' : `เก่ากว่า ${_sysLogClearDays} วัน`;
+      if (label) label.textContent = _sysLogClearDays === 0 ? 'ทั้งหมด' : `${_sysLogClearDays} วัน`;
     };
   });
+
+  // bind schedule days buttons
+  document.querySelectorAll('#sysLogSchedDaysWrap [data-sysret-days]').forEach(b => {
+    b.onclick = () => {
+      _sysLogSchedDays = parseInt(b.dataset.sysretDays);
+      document.querySelectorAll('[data-sysret-days]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+    };
+  });
+
+  // load last/next run from retention settings
+  const r = _sysLogRetention || {};
+  const lastEl = document.getElementById('sysLogSchedLastRun');
+  const nextEl = document.getElementById('sysLogSchedNextRun');
+  if (lastEl) lastEl.textContent = r.last_run ? new Date(r.last_run).toLocaleString('th-TH') : '—';
+  if (nextEl) nextEl.textContent = r.next_run ? new Date(r.next_run).toLocaleString('th-TH') : '—';
+
   document.getElementById('clearSystemLogModal')?.classList.remove('hidden');
 }
 
@@ -3034,12 +3070,31 @@ function closeClearSystemLogModal() {
 }
 
 async function confirmClearSystemLogs() {
-  const logType = document.getElementById('sysLogClearSource')?.value || 'all';
-  const label  = _sysLogClearDays === 0 ? 'ทั้งหมด' : `เก่ากว่า ${_sysLogClearDays} วัน`;
-  const tableLabel = { batool: 'batool_logs', admin: 'admin_console_logs', all: 'ทั้งสองตาราง' }[logType] || logType;
-  if (!confirm(`ยืนยันลบ log ${label} จาก ${tableLabel}?`)) return;
+  if (_sysLogClearMode === 'schedule') {
+    // บันทึกตั้งเวลา retention โดยใช้ interval = _sysLogSchedDays วัน
+    try {
+      await apiCall('/api/admin-logs/retention', {
+        method: 'PUT',
+        body: JSON.stringify({
+          enabled: true,
+          retention_days: _sysLogSchedDays,
+          interval_hours: 24,
+        }),
+      });
+      showToast(`ตั้งเวลาลบ log อัตโนมัติทุก ${_sysLogSchedDays} วันแล้ว`, 'success');
+      closeClearSystemLogModal();
+      await _loadSystemLogRetention();
+    } catch (e) {
+      showToast('บันทึกไม่สำเร็จ: ' + e.message, 'error');
+    }
+    return;
+  }
+
+  // mode = 'now'
+  const label = _sysLogClearDays === 0 ? 'ทั้งหมด' : `เก่ากว่า ${_sysLogClearDays} วัน`;
+  if (!confirm(`ยืนยันลบ log ${label}?`)) return;
   try {
-    let path = `/api/admin-logs/clear?days=${_sysLogClearDays}&log_type=${encodeURIComponent(logType)}`;
+    const path = `/api/admin-logs/clear?days=${_sysLogClearDays}&log_type=all`;
     const res = await apiCall(path, { method: 'DELETE' });
     const deleted = res.data?.deleted ?? 0;
     showToast(`ลบ log สำเร็จ (${deleted} รายการ)`, 'success');

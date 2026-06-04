@@ -1015,35 +1015,59 @@
 
     <!-- Clear System Log Modal -->
     <div class="modal-overlay hidden" id="clearSystemLogModal" onclick="if(event.target===this)closeClearSystemLogModal()">
-      <div class="modal" style="max-width:440px">
+      <div class="modal" style="max-width:460px">
         <div class="modal-header">
-          <div class="modal-title">🗑 เคลียร์ System Log</div>
+          <div class="modal-title">🗑 เคลียร์ Log กิจกรรม</div>
           <button class="modal-close" onclick="closeClearSystemLogModal()">✕</button>
         </div>
-        <div class="modal-body" style="padding:20px 24px;display:flex;flex-direction:column;gap:16px">
-          <div>
-            <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Source</div>
-            <select class="filter-select" id="sysLogClearSource" style="width:100%">
-              <option value="batool">BA Tool (`batool_logs`)</option>
-              <option value="admin">Admin Console (`admin_console_logs`)</option>
-              <option value="all">ทั้งสองตาราง</option>
-            </select>
+        <div class="modal-body" style="padding:20px 24px;display:flex;flex-direction:column;gap:18px">
+
+          <!-- Mode selector -->
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3)">โหมดการเคลียร์</div>
+            <div style="display:flex;gap:8px">
+              <button class="clear-mode-btn active" id="sysLogClearModeNow" onclick="setSysLogClearMode('now')">🗑 เคลียร์ทันที</button>
+              <button class="clear-mode-btn" id="sysLogClearModeSchedule" onclick="setSysLogClearMode('schedule')">⏰ ตั้งเวลาอัตโนมัติ</button>
+            </div>
           </div>
-          <div>
+
+          <!-- Immediate clear panel -->
+          <div id="sysLogClearNowPanel">
             <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">เคลียร์ข้อมูลที่เก่ากว่า</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap" id="sysLogClearDaysWrap">
               <button class="clear-day-btn" data-sys-days="7">7 วัน</button>
+              <button class="clear-day-btn" data-sys-days="10">10 วัน</button>
+              <button class="clear-day-btn" data-sys-days="15">15 วัน</button>
               <button class="clear-day-btn" data-sys-days="30">30 วัน</button>
+              <button class="clear-day-btn" data-sys-days="60">60 วัน</button>
               <button class="clear-day-btn active" data-sys-days="0">ทั้งหมด</button>
             </div>
             <div style="margin-top:12px;padding:10px 12px;background:rgba(255,77,109,.06);border:1px solid rgba(255,77,109,.15);border-radius:var(--radius);font-size:12px;color:var(--text2)">
-              จะลบ log <strong id="sysLogClearLabel">ทั้งหมด</strong>
+              จะลบ log ที่เก่ากว่า <strong id="sysLogClearLabel">ทั้งหมด</strong> ออกทั้งหมด
             </div>
           </div>
+
+          <!-- Schedule panel -->
+          <div id="sysLogClearSchedulePanel" style="display:none;flex-direction:column;gap:12px">
+            <div>
+              <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">เคลียร์อัตโนมัติทุก</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap" id="sysLogSchedDaysWrap">
+                <button class="clear-day-btn active" data-sysret-days="7">7 วัน</button>
+                <button class="clear-day-btn" data-sysret-days="10">10 วัน</button>
+                <button class="clear-day-btn" data-sysret-days="15">15 วัน</button>
+                <button class="clear-day-btn" data-sysret-days="30">30 วัน</button>
+              </div>
+            </div>
+            <div style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);font-size:12px;color:var(--text2)">
+              ครั้งล่าสุด: <strong id="sysLogSchedLastRun">—</strong><br>
+              ครั้งถัดไป: <strong id="sysLogSchedNextRun">—</strong>
+            </div>
+          </div>
+
         </div>
         <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid var(--border)">
           <button class="btn btn-secondary" onclick="closeClearSystemLogModal()">ยกเลิก</button>
-          <button class="btn btn-danger" onclick="confirmClearSystemLogs()">ยืนยันเคลียร์</button>
+          <button class="btn btn-danger" id="btnConfirmSysLogClear" onclick="confirmClearSystemLogs()">ยืนยันเคลียร์</button>
         </div>
       </div>
     </div>
