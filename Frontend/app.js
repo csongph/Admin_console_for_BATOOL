@@ -1942,8 +1942,9 @@ async function loadSyncStatus() {
     const res = await apiCall('/api/sync/status');
     const s = res.data || {};
     const m = s.last_metrics || {};
+    // ใช้ formatLocalDateTime() เพื่อ handle UTC timezone ถูกต้อง
     const lastRun = s.last_run_at
-      ? new Date(s.last_run_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium' })
+      ? formatLocalDateTime(s.last_run_at)
       : 'ยังไม่เคยรัน';
     const intervalMin = s.interval_minutes ?? Math.round((s.interval_seconds || 300) / 60);
     const stateLabel = s.running
