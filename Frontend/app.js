@@ -1460,6 +1460,8 @@ function renderOnlineUsers(users, total) {
   if (badge)     badge.textContent = total;
   const countEl  = document.getElementById('onlineUserCount');
   if (countEl)   countEl.textContent = total;
+  const topbarCount = document.getElementById('topbarUserCount');
+  if (topbarCount) topbarCount.textContent = total;
 
   const active   = users.filter(u => u.idle_seconds < 60).length;
   const expiring = users.filter(u => u.idle_seconds >= 60 && u.idle_seconds < 90).length;
@@ -1937,7 +1939,6 @@ if (globalSearch) {
 
 async function loadSyncStatus() {
   const panel = document.getElementById('syncStatusPanel');
-  if (!panel) return;
   try {
     const res = await apiCall('/api/sync/status');
     const s = res.data || {};
@@ -1952,14 +1953,35 @@ async function loadSyncStatus() {
       : (s.scheduler_active
         ? '<span style="color:var(--success,#22c55e)">● พร้อม (scheduler ทำงาน)</span>'
         : '<span style="color:var(--danger,#ef4444)">● Scheduler หยุด</span>');
-    panel.innerHTML = `
-      <div>${stateLabel}</div>
-      <div>ช่วงเวลาอัตโนมัติ: <strong>${intervalMin}</strong> นาที</div>
-      <div>รอบล่าสุด: ${lastRun}</div>
-      <div>ผลลัพธ์ล่าสุด — processed: ${m.processed ?? 0}, synced: ${m.synced ?? 0}, errors: ${m.errors ?? 0}${m.elapsed_seconds != null ? ` (${m.elapsed_seconds}s)` : ''}</div>
-    `;
+    
+    if (panel) {
+      panel.innerHTML = `
+        <div>${stateLabel}</div>
+        <div>ช่วงเวลาอัตโนมัติ: <strong>${intervalMin}</strong> นาที</div>
+        <div>รอบล่าสุด: ${lastRun}</div>
+        <div>ผลลัพธ์ล่าสุด — processed: ${m.processed ?? 0}, synced: ${m.synced ?? 0}, errors: ${m.errors ?? 0}${m.elapsed_seconds != null ? ` (${m.elapsed_seconds}s)` : ''}</div>
+      `;
+    }
+
+    // Update Topbar Workspace Capsule Sync Status
+    const topbarSync = document.getElementById('topbarSyncStatus');
+    if (topbarSync) {
+      const capsuleText = topbarSync.querySelector('.capsule-text');
+      const syncIcon = topbarSync.querySelector('.sync-icon');
+      if (s.running) {
+        capsuleText.textContent = 'Syncing...';
+        capsuleText.style.color = 'var(--warn)';
+        syncIcon.style.color = 'var(--warn)';
+        syncIcon.style.animation = 'spin 1s linear infinite';
+      } else {
+        capsuleText.textContent = 'Synced';
+        capsuleText.style.color = 'var(--text2)';
+        syncIcon.style.color = 'var(--text2)';
+        syncIcon.style.animation = 'none';
+      }
+    }
   } catch (e) {
-    panel.textContent = 'โหลดสถานะไม่สำเร็จ: ' + e.message;
+    if (panel) panel.textContent = 'โหลดสถานะไม่สำเร็จ: ' + e.message;
   }
 }
 
